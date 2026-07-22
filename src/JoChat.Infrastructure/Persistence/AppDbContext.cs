@@ -5,8 +5,8 @@ using ScimSlim.EntityFramework.Entities;
 
 namespace JoChat.Infrastructure.Persistence;
 
-// TODO: no EF Core migrations exist yet — run `dotnet ef migrations add InitialCreate`
-// once the model below settles, then apply on startup/deploy.
+// Two provider-specific migration sets live under Migrations/Sqlite and Migrations/MySql
+// (see AppDbContextFactory) — regenerate both when the model below changes.
 public class AppDbContext(DbContextOptions<AppDbContext> options)
     : DbContext(options), IScimDbContext
 {
@@ -33,7 +33,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         b.Entity<Persona>(e =>
         {
-            e.Property(x => x.SystemPrompt).HasColumnType("LONGTEXT");
             e.HasOne(x => x.Owner).WithMany().HasForeignKey(x => x.OwnerId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
@@ -48,7 +47,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         b.Entity<Message>(e =>
         {
-            e.Property(x => x.Content).HasColumnType("LONGTEXT");
             e.HasOne(x => x.Chat).WithMany(c => c.Messages).HasForeignKey(x => x.ChatId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasIndex(x => new { x.ChatId, x.CreatedAt });
@@ -65,5 +63,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         b.Entity<UsageRecord>(e =>
             e.HasIndex(x => new { x.UserId, x.CreatedAt }));
+
+        // LONGTEXT is MySQL-specific; SQLite has no equivalent and defaults to TEXT for string columns.
+        if (Database.IsMySql())
+        {
+            b.Entity<Persona>().Property(x => x.SystemPrompt).HasColumnType("LONGTEXT");
+            b.Entity<Message>().Property(x => x.Content).HasColumnType("LONGTEXT");
+        }
     }
 }

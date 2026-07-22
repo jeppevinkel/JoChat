@@ -14,7 +14,14 @@ public static class DependencyInjection
         this IServiceCollection services, IConfiguration config)
     {
         var cs = config.GetConnectionString("Default")!;
-        services.AddDbContext<AppDbContext>(o => o.UseMySql(cs, ServerVersion.AutoDetect(cs)));
+        var dbProvider = config["Database:Provider"] ?? "MySql";
+        services.AddDbContext<AppDbContext>(o =>
+        {
+            if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+                o.UseSqlite(cs);
+            else
+                o.UseMySql(cs, ServerVersion.AutoDetect(cs));
+        });
 
         services.AddMemoryCache();
         services.AddHttpContextAccessor();

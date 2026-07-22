@@ -8,6 +8,7 @@ using JoChat.Infrastructure.Persistence;
 using JoChat.Providers;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using ScimSlim.EntityFramework;
 using ScimSlim.Extensions;
 
@@ -65,6 +66,10 @@ app.UseRateLimiter();
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
+
+    // Auto-apply pending migrations locally (SQLite) so the dev DB file stays current.
+    using var scope = app.Services.CreateScope();
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
 
 app.UseHttpsRedirection();
