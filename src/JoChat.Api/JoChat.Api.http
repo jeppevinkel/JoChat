@@ -1,0 +1,6 @@
+@JoChat.Api_HostAddress = http://localhost:5073
+
+GET {{JoChat.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

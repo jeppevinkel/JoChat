@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/JoChat.Api/JoChat.Api.csproj" />
+  <Project Path="src/JoChat.Core/JoChat.Core.csproj" />
+  <Project Path="src/JoChat.Infrastructure/JoChat.Infrastructure.csproj" />
+  <Project Path="src/JoChat.Providers/JoChat.Providers.csproj" />
+</Solution>
