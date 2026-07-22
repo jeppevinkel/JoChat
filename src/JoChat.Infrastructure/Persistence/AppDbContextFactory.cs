@@ -7,6 +7,13 @@ namespace JoChat.Infrastructure.Persistence;
 // can be generated for either database without needing a live connection or the full app host.
 // Sqlite: dotnet ef migrations add <Name> -o Migrations/Sqlite -p src/JoChat.Infrastructure -s src/JoChat.Api
 // MySql:  EF_PROVIDER=MySql dotnet ef migrations add <Name> -o Migrations/MySql -p src/JoChat.Infrastructure -s src/JoChat.Api
+//
+// IMPORTANT: only keep ONE provider's migration set in this assembly at a time.
+// Database.Migrate() applies every Migration-derived class it finds in the assembly
+// regardless of which provider generated it, so Sqlite and MySql migrations can't
+// coexist here safely. When switching, delete the other provider's Migrations/<X>
+// folder before generating the new set (a full-model AppDbContextModelSnapshot from
+// the old provider would also need removing/regenerating).
 public class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbContext>
 {
     public AppDbContext CreateDbContext(string[] args)
