@@ -23,14 +23,14 @@ Migrations: `dotnet ef migrations add <Name> -o Migrations/Postgres -p src/JoCha
 ## Production
 
 JoChat ships as one container image (API + web client) built by GitHub Actions and published to
-GHCR: pushes to `main` produce `ghcr.io/<owner>/jochat:main` and `:sha-<short>`; a tag `vX.Y.Z`
+GHCR: pushes to `main` produce `ghcr.io/jeppevinkel/jochat:main` and `:sha-<short>`; a tag `vX.Y.Z`
 produces `:X.Y.Z`, `:X.Y` and `:latest`. `deploy/docker-compose.yml` runs it with PostgreSQL.
 
 ```sh
 # on the Docker host
 mkdir jochat && cd jochat
-curl -O https://raw.githubusercontent.com/<owner>/jochat/main/deploy/docker-compose.yml
-curl -o .env https://raw.githubusercontent.com/<owner>/jochat/main/deploy/.env.example
+curl -O https://raw.githubusercontent.com/jeppevinkel/jochat/main/deploy/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/jeppevinkel/jochat/main/deploy/.env.example
 $EDITOR .env                       # image, DB password, Authentik, API keys
 docker compose up -d
 ```

@@ -20,7 +20,7 @@ services:
     networks: [jochat]
 
   jochat:
-    image: ${JOCHAT_IMAGE:-ghcr.io/OWNER/jochat:latest}
+    image: ${JOCHAT_IMAGE:-ghcr.io/jeppevinkel/jochat:latest}
     restart: unless-stopped
     depends_on:
       postgres:
