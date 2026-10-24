@@ -23,10 +23,11 @@ public static class ImageEndpoints
             var user = await current.GetRequiredUserAsync(ct);
 
             // When generated from inside a chat the image is recorded as a turn, so it survives
-            // reloads and later model turns can see that an image was produced.
+            // reloads and later model turns can see that an image was produced. With a persona instead
+            // of a chat, the image starts a new chat — created only below, once the image exists, so a
+            // failed generation leaves no empty chat behind.
             Chat? chat = null;
-            var imagePrompt = req.Prompt;
-            ImagePromptWriter.Result? written = null;
+            var isNewChat = false;
             if (req.ChatId is { } chatId)
             {
                 chat = await db.Chats
@@ -36,7 +37,26 @@ public static class ImageEndpoints
                     .AsSplitQuery()
                     .FirstOrDefaultAsync(c => c.Id == chatId && c.OwnerId == user.Id, ct);
                 if (chat?.Persona is null) return Results.NotFound();
+            }
+            else if (req.PersonaId is { } personaId)
+            {
+                var startPersona = await db.Personas
+                    .FirstOrDefaultAsync(p => p.Id == personaId && (p.OwnerId == user.Id || p.IsShared), ct);
+                if (startPersona is null)
+                    return Results.Problem("Persona not found.", statusCode: StatusCodes.Status400BadRequest);
+                var created = DateTime.UtcNow;
+                chat = new Chat
+                {
+                    Id = Guid.NewGuid(), Title = ChatTitles.Default, PersonaId = startPersona.Id, Persona = startPersona,
+                    OwnerId = user.Id, CreatedAt = created, UpdatedAt = created,
+                };
+                isNewChat = true;
+            }
 
+            var imagePrompt = req.Prompt;
+            ImagePromptWriter.Result? written = null;
+            if (chat?.Persona is not null)
+            {
                 // Let the persona rewrite the request with the conversation as context; on any
                 // failure the raw request is used so image generation still works.
                 var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
@@ -82,6 +102,7 @@ public static class ImageEndpoints
             Guid? messageId = null;
             if (chat is not null)
             {
+                if (isNewChat) db.Chats.Add(chat);
                 var now = DateTime.UtcNow;
                 var prompt = new Message
                 {
@@ -128,10 +149,17 @@ public static class ImageEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Created($"/api/attachments/{attachment.Id}",
-                new { attachment.Id, Url = $"/api/attachments/{attachment.Id}", attachment.MimeType, MessageId = messageId, Prompt = imagePrompt });
+                new
+                {
+                    attachment.Id, Url = $"/api/attachments/{attachment.Id}", attachment.MimeType,
+                    MessageId = messageId, ChatId = chat?.Id, Prompt = imagePrompt,
+                });
         }).RequireRateLimiting(RatePolicies.Image);
         return group;
     }
 }
 
-public record GenerateImageRequest(string Prompt, string? Provider, string? Size, string? Quality, Guid? ChatId);
+/// <param name="ChatId">Record the image as a turn in this chat.</param>
+/// <param name="PersonaId">Start a new chat with this persona whose first turn is the image (ignored with ChatId).</param>
+public record GenerateImageRequest(
+    string Prompt, string? Provider, string? Size, string? Quality, Guid? ChatId, Guid? PersonaId = null);

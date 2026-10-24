@@ -47,6 +47,16 @@ public static class ChatEndpoints
             return Results.Created($"/api/chats/{chat.Id}", new { chat.Id });
         });
 
+        // Starts a chat with its first message. The chat is created only now, in the same save as
+        // that message, so there are no empty chats to clean up; the first SSE event (chat_created)
+        // carries the new chat's id, and the reply streams after it as for any other message.
+        group.MapPost("/chats/start",
+            (StartChatRequest req, IChatStreamingService chatService, CancellationToken ct)
+                => TypedResults.ServerSentEvents(
+                    chatService.StartAndStreamAsync(req.PersonaId, req.Text, req.AttachmentIds, ct)
+                        .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))))
+            .RequireRateLimiting(RatePolicies.Chat);
+
         // Ownership checks below return 404 for both missing and foreign chats so that
         // chat ids can't be probed for existence.
         group.MapGet("/chats/{id:guid}/messages", async (Guid id, AppDbContext db,
@@ -195,11 +205,13 @@ public static class ChatEndpoints
         ChatStreamEvent.ToolResult => "tool_result",
         ChatStreamEvent.Completed => "completed",
         ChatStreamEvent.Error => "error",
+        ChatStreamEvent.ChatCreated => "chat_created",
         _ => "message",
     };
 }
 
 public record CreateChatRequest(Guid PersonaId, string? Title);
 public record UpdateChatRequest(Guid? PersonaId);
+public record StartChatRequest(Guid PersonaId, string Text, List<Guid>? AttachmentIds);
 public record SendMessageRequest(string Text, List<Guid>? AttachmentIds);
 public record EditMessageRequest(string Content);

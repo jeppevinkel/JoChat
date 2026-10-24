@@ -46,6 +46,11 @@ public abstract record ChatStreamEvent
         int TokensIn, int TokensOut, string StopReason,
         string? RawContent = null, string? RawContentFormat = null) : ChatStreamEvent;
     public sealed record Error(string Message) : ChatStreamEvent;
+    /// <summary>
+    /// Emitted first when a reply starts a new chat: the chat and its first message have just been
+    /// saved together, and this carries the new chat's id.
+    /// </summary>
+    public sealed record ChatCreated(Guid ChatId) : ChatStreamEvent;
 }
 
 public record ImageGenRequest(string Prompt, string? Size = null, string? Quality = null);
