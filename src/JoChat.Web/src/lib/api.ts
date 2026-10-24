@@ -167,8 +167,10 @@ export type ChatStreamEvent =
   | { type: 'tool_result'; tool: string; label: string; isError: boolean }
   | { type: 'completed'; tokensIn: number; tokensOut: number; stopReason: string }
   | { type: 'error'; message: string }
+  // First event when the message starts a new chat: the chat now exists under this id.
+  | { type: 'chat_created'; chatId: string }
 
-const STREAM_EVENTS = new Set(['text', 'tool_use', 'tool_result', 'completed', 'error'])
+const STREAM_EVENTS = new Set(['text', 'tool_use', 'tool_result', 'completed', 'error', 'chat_created'])
 
 export class ApiError extends Error {
   status: number
@@ -242,11 +244,6 @@ export function createApi(getToken: () => string | undefined) {
     deletePersona: (id: string) => json<void>(`/personas/${id}`, { method: 'DELETE' }),
     ttsVoices: (provider: string) => json<TtsVoice[]>(`/tts/voices?provider=${encodeURIComponent(provider)}`),
     chats: () => json<ChatSummary[]>('/chats'),
-    createChat: (personaId: string) =>
-      json<{ id: string }>('/chats', { method: 'POST', body: JSON.stringify({ personaId }) }),
-    // Only allowed before the chat's first message (409 afterwards).
-    setChatPersona: (id: string, personaId: string) =>
-      json<void>(`/chats/${id}`, { method: 'PATCH', body: JSON.stringify({ personaId }) }),
     deleteChat: (id: string) => json<void>(`/chats/${id}`, { method: 'DELETE' }),
     messages: (chatId: string) => json<Message[]>(`/chats/${chatId}/messages`),
     updateMessage: (chatId: string, messageId: string, content: string) =>
@@ -257,8 +254,9 @@ export function createApi(getToken: () => string | undefined) {
     deleteMessage: (chatId: string, messageId: string) =>
       json<void>(`/chats/${chatId}/messages/${messageId}`, { method: 'DELETE' }),
 
-    generateImage: (body: { prompt: string; chatId?: string; provider?: string; size?: string; quality?: string }) =>
-      json<{ id: string; url: string; mimeType: string; messageId: string | null }>('/images/generate', {
+    // With personaId instead of chatId the image starts a new chat (returned as chatId).
+    generateImage: (body: { prompt: string; chatId?: string; personaId?: string; provider?: string; size?: string; quality?: string }) =>
+      json<{ id: string; url: string; mimeType: string; messageId: string | null; chatId: string | null }>('/images/generate', {
         method: 'POST',
         body: JSON.stringify(body),
       }),
@@ -325,6 +323,10 @@ export function createApi(getToken: () => string | undefined) {
 
     sendMessage: (chatId: string, text: string, attachmentIds: string[], signal?: AbortSignal) =>
       streamEvents(`/api/chats/${chatId}/messages`, { text, attachmentIds }, headers(), signal),
+
+    // Creates the chat together with its first message; the stream opens with chat_created.
+    startChat: (personaId: string, text: string, attachmentIds: string[], signal?: AbortSignal) =>
+      streamEvents('/api/chats/start', { personaId, text, attachmentIds }, headers(), signal),
 
     regenerate: (chatId: string, messageId: string, signal?: AbortSignal) =>
       streamEvents(`/api/chats/${chatId}/messages/${messageId}/regenerate`, undefined, headers(), signal),

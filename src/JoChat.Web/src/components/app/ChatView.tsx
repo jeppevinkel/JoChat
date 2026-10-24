@@ -12,20 +12,23 @@ import {
   type UIEvent,
   type WheelEvent,
 } from 'react'
-import { useParams } from 'react-router'
-import { ArrowDown, ImagePlus, Loader2, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { useLocation, useNavigate, useParams } from 'react-router'
+import { ArrowDown, ImagePlus, Loader2, Plus, SendHorizontal, Sparkles, Square, Star, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type ChatStreamEvent, type Persona, type ToolStep } from '@/lib/api'
 import { selectClass } from '@/lib/persona'
 import { fenced, insideFence, looksLikeCode } from '@/lib/code-paste'
 import { useChats } from '@/lib/use-chats'
+import type { DraftState } from '@/lib/draft'
+import { useDefaultPersona } from '@/lib/use-me'
 import { messageImages, useImageGallery, type GalleryItem } from '@/lib/use-image-gallery'
 import { COARSE_POINTER_QUERY, useMediaQuery } from '@/lib/use-media-query'
 import { cn } from '@/lib/utils'
 import { ChatHeader } from './ChatHeader'
 import { ImageGalleryProvider } from './ImageViewer'
 import { MessageBubble, type DisplayMessage, type MessageActions, type TtsDefaults } from './MessageBubble'
+import { PersonaDialog } from './PersonaDialog'
 
 interface PendingUpload {
   file: File
@@ -41,19 +44,36 @@ const REATTACH_THRESHOLD = 16
 // What the upload endpoint accepts; pasted or dropped files of other types are ignored.
 const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
+// A draft's first message creates its chat and moves the URL from /chats/new to /chats/<id>,
+// but the pane must stay mounted through that (the reply is still streaming into it), so the new
+// id is aliased to the draft's pane key.
+const paneAliases = new Map<string, string>()
+
 // Keyed by chat id so switching chats remounts with fresh state instead of resetting in an effect.
+// Drafts (/chats/new) are keyed by the draft key in the location state, so each "New conversation"
+// starts from a clean composer.
 export function ChatView() {
   const { id } = useParams<{ id: string }>()
+  const state = useLocation().state as DraftState | null
   if (!id) return null
-  return <ChatPane key={id} chatId={id} />
+  if (id === 'new') {
+    const key = `draft:${state?.draft ?? ''}`
+    return <ChatPane key={key} paneKey={key} chatId={null} />
+  }
+  const key = paneAliases.get(id) ?? id
+  return <ChatPane key={key} paneKey={key} chatId={id} />
 }
 
-function ChatPane({ chatId }: { chatId: string }) {
+// chatId is null for a draft: nothing exists on the server until the first message is sent.
+function ChatPane({ chatId, paneKey }: { chatId: string | null; paneKey: string }) {
   const api = useApi()
+  const navigate = useNavigate()
   const { chats, refresh } = useChats()
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [imageMode, setImageMode] = useState(false)
-  const [imageError, setImageError] = useState<string | null>(null)
+  // Problems to show above the composer: a failed image generation, or a first message that
+  // couldn't start the chat (its text and images are put back for another try).
+  const [composerError, setComposerError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [text, setText] = useState('')
@@ -69,49 +89,51 @@ function ChatPane({ chatId }: { chatId: string }) {
     attachedRef.current = v
     setAttachedState(v)
   }
-  const loadedRef = useRef(false)
   const streamingRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const touchYRef = useRef<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Mirrors of state for the unmount cleanup, which can't read current state directly.
-  const messagesRef = useRef<DisplayMessage[]>([])
   useEffect(() => {
-    messagesRef.current = messages
     streamingRef.current = streaming
-  }, [messages, streaming])
+  }, [streaming])
 
+  // The chat this pane talks to. Set the moment a draft's chat is created (before the URL and
+  // the chatId prop catch up), so the stream's own reconciliation already loads the right chat.
+  const chatIdRef = useRef(chatId)
+
+  // Replaces the list with the server's; false when there is no chat yet or it couldn't load.
   const load = useCallback(async () => {
+    const id = chatIdRef.current
+    if (!id) return false
     try {
-      const list = await api.messages(chatId)
+      const list = await api.messages(id)
       setMessages(list.map((m) => ({ id: m.id, role: m.role, content: m.content, attachments: m.attachments, steps: m.toolActivity ?? undefined })))
       setLoadError(null)
-      loadedRef.current = true
+      return true
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e))
+      return false
     }
-  }, [api, chatId])
+  }, [api])
 
+  // Once per pane: a draft that becomes a chat keeps its pane and its streamed state.
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- async fetch; setState only runs after the await
     void load()
   }, [load])
 
-  // Leaving the chat: stop any reply in flight, and drop the chat if it was opened but never
-  // used. Runs on unmount only (the pane is keyed by chat id) — never on a dependency change,
-  // which would delete the chat out from under you.
-  const leaveRef = useRef(() => {})
-  useEffect(() => {
-    leaveRef.current = () => {
-      abortRef.current?.abort()
-      if (loadedRef.current && messagesRef.current.length === 0 && !streamingRef.current) {
-        api.deleteChat(chatId).then(() => refresh()).catch(() => {})
-      }
-    }
-  }, [api, chatId, refresh])
-  useEffect(() => () => leaveRef.current(), [])
+  // Leaving the chat stops any reply still streaming into it.
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  // A draft's first message (or image) created its chat: adopt it without remounting the pane.
+  const adoptChat = (id: string) => {
+    chatIdRef.current = id
+    paneAliases.set(id, paneKey)
+    navigate(`/chats/${id}`, { replace: true })
+    void refresh()
+  }
 
   // Auto-scroll follows new content only while attached. Detaching is decided from user
   // intent (wheel up, touch drag down, PageUp/ArrowUp/Home) rather than from the resulting
@@ -149,8 +171,10 @@ function ChatPane({ chatId }: { chatId: string }) {
     }
   }
 
-  const summary = chats.find((c) => c.id === chatId)
-  const title = summary?.title
+  const summary = chatId ? chats.find((c) => c.id === chatId) : undefined
+  // A just-created chat keeps its draft title until the refreshed chat list has it.
+  const startedAsDraft = paneKey.startsWith('draft:')
+  const title = summary?.title ?? (startedAsDraft ? 'New chat' : '')
   useEffect(() => {
     if (!title) return
     document.title = `${title} · JoChat`
@@ -159,36 +183,33 @@ function ChatPane({ chatId }: { chatId: string }) {
     }
   }, [title])
   // The personas you can use: read-aloud takes the chat persona's voice (no voice, no button), and
-  // an empty chat offers the list so you can pick who to talk to before the first message.
+  // a draft offers the list so you can pick who to talk to before the first message.
   const [personas, setPersonas] = useState<Persona[] | null>(null)
-  const [personaBusy, setPersonaBusy] = useState(false)
-  useEffect(() => {
-    let cancelled = false
-    api
-      .personas()
-      .then((list) => !cancelled && setPersonas(list))
-      .catch(() => !cancelled && setPersonas([]))
-    return () => {
-      cancelled = true
+  const loadPersonas = useCallback(async () => {
+    try {
+      setPersonas(await api.personas())
+    } catch {
+      setPersonas([])
     }
   }, [api])
-  const persona = personas?.find((p) => p.id === summary?.personaId)
+  useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- async fetch; setState only runs after the await
+    void loadPersonas()
+  }, [loadPersonas])
+
+  // A draft talks to the persona you pick, else your default, else the one from your most recent
+  // chat, else the first. Once the chat exists its persona is fixed.
+  const { defaultPersonaId, setDefaultPersona } = useDefaultPersona()
+  const [draftPersonaId, setDraftPersonaId] = useState<string | null>(null)
+  const find = (id: string | null | undefined) => (id ? personas?.find((p) => p.id === id) : undefined)
+  const persona = chatId
+    ? find(summary?.personaId ?? draftPersonaId)
+    : (find(draftPersonaId) ?? find(defaultPersonaId) ?? find(chats[0]?.personaId) ?? personas?.[0])
+  const [creatingPersona, setCreatingPersona] = useState(false)
   const tts = useMemo<TtsDefaults | null>(
     () => (persona?.defaultTtsProvider && persona.defaultTtsVoiceId ? { provider: persona.defaultTtsProvider, voiceId: persona.defaultTtsVoiceId } : null),
     [persona],
   )
-  const changePersona = async (personaId: string) => {
-    setPersonaBusy(true)
-    setActionError(null)
-    try {
-      await api.setChatPersona(chatId, personaId)
-      await refresh()
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setPersonaBusy(false)
-    }
-  }
 
   const addFiles = (files: File[]) => {
     for (const file of files.filter((f) => IMAGE_TYPES.includes(f.type))) {
@@ -251,9 +272,11 @@ function ChatPane({ chatId }: { chatId: string }) {
     [messages, uploads],
   )
 
-  const canSend = !streaming && text.trim().length > 0 && uploads.every((u) => u.id || u.error)
+  // A draft can only be sent once there's a persona to start the chat with.
+  const canSend = !streaming && text.trim().length > 0 && uploads.every((u) => u.id || u.error) && (!!chatId || !!persona)
 
   // Drives a reply stream into a placeholder assistant bubble, then reconciles with the server.
+  // Returns the failure message, if the reply failed.
   const consume = async (stream: AsyncGenerator<ChatStreamEvent>, assistantId: string, controller: AbortController) => {
     const patchAssistant = (patch: Partial<DisplayMessage> | ((m: DisplayMessage) => DisplayMessage)) =>
       setMessages((list) =>
@@ -279,6 +302,8 @@ function ChatPane({ chatId }: { chatId: string }) {
           patchAssistant({ error: evt.message, streaming: false })
         } else if (evt.type === 'completed') {
           patchAssistant({ streaming: false })
+        } else if (evt.type === 'chat_created') {
+          adoptChat(evt.chatId)
         }
       }
     } catch (err) {
@@ -291,11 +316,12 @@ function ChatPane({ chatId }: { chatId: string }) {
       setStreaming(false)
       abortRef.current = null
       // Pull the persisted versions (real ids, attachment refs) and the possibly-renamed chat.
-      await load()
+      const reloaded = await load()
       void refresh()
       // A failed reply is never persisted, so re-attach the error after the reload or it
-      // silently disappears.
-      if (failure) {
+      // silently disappears. Without a reload the placeholder still shows it; adding it again
+      // would show the error twice.
+      if (failure && reloaded) {
         const message = failure
         setMessages((list) => [
           ...list,
@@ -303,20 +329,24 @@ function ChatPane({ chatId }: { chatId: string }) {
         ])
       }
     }
+    return failure
   }
 
   const generateImage = async () => {
     const prompt = text.trim()
     setText('')
     setStreaming(true)
-    setImageError(null)
+    setComposerError(null)
     setAttached(true)
     try {
-      await api.generateImage({ prompt, chatId })
+      const existing = chatIdRef.current
+      if (!existing) setDraftPersonaId(persona!.id)
+      const result = await api.generateImage(existing ? { prompt, chatId: existing } : { prompt, personaId: persona!.id })
+      if (!existing && result.chatId) adoptChat(result.chatId)
       await load()
       void refresh()
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : String(err))
+      setComposerError(err instanceof Error ? err.message : String(err))
       setText(prompt)
     } finally {
       setStreaming(false)
@@ -337,25 +367,38 @@ function ChatPane({ chatId }: { chatId: string }) {
       previewUrls,
     }
     const assistantId = `local-${Date.now()}-a`
+    const sentUploads = uploads
     setMessages((m) => [...m, userMsg, { id: assistantId, role: 'Assistant', content: '', attachments: [], streaming: true }])
     setText('')
     setUploads([])
+    setComposerError(null)
     setStreaming(true)
     setAttached(true)
     const controller = new AbortController()
     abortRef.current = controller
-    try {
-      await consume(api.sendMessage(chatId, userMsg.content, attachmentIds, controller.signal), assistantId, controller)
-    } finally {
-      previewUrls.forEach((u) => URL.revokeObjectURL(u))
+    const existing = chatIdRef.current
+    if (!existing) setDraftPersonaId(persona!.id)
+    const stream = existing
+      ? api.sendMessage(existing, userMsg.content, attachmentIds, controller.signal)
+      : api.startChat(persona!.id, userMsg.content, attachmentIds, controller.signal)
+    const failure = await consume(stream, assistantId, controller)
+    if (!chatIdRef.current) {
+      // The chat was never created (the start failed or was stopped first): back to a draft with
+      // the message in the composer, previews intact, so it can simply be sent again.
+      setMessages([])
+      setText(userMsg.content)
+      setUploads(sentUploads)
+      setComposerError(failure)
+      return
     }
+    previewUrls.forEach((u) => URL.revokeObjectURL(u))
   }
 
   const actions: MessageActions = {
     onEdit: async (id, content) => {
       setActionError(null)
       try {
-        await api.updateMessage(chatId, id, content)
+        await api.updateMessage(chatIdRef.current!, id, content)
         setMessages((list) => list.map((m) => (m.id === id ? { ...m, content, attachments: m.attachments.filter((a) => a.kind !== 'TtsAudio') } : m)))
       } catch (e) {
         setActionError(e instanceof Error ? e.message : String(e))
@@ -366,7 +409,7 @@ function ChatPane({ chatId }: { chatId: string }) {
       if (!confirm('Delete this message?')) return
       setActionError(null)
       try {
-        await api.deleteMessage(chatId, id)
+        await api.deleteMessage(chatIdRef.current!, id)
         setMessages((list) => list.filter((m) => m.id !== id))
       } catch (e) {
         setActionError(e instanceof Error ? e.message : String(e))
@@ -383,7 +426,7 @@ function ChatPane({ chatId }: { chatId: string }) {
       setAttached(true)
       const controller = new AbortController()
       abortRef.current = controller
-      void consume(api.regenerate(chatId, id, controller.signal), assistantId, controller)
+      void consume(api.regenerate(chatIdRef.current!, id, controller.signal), assistantId, controller)
     },
   }
 
@@ -400,7 +443,12 @@ function ChatPane({ chatId }: { chatId: string }) {
   return (
     <ImageGalleryProvider items={gallery}>
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
-        {summary && <ChatHeader chat={summary} />}
+        <ChatHeader
+          title={title ?? ''}
+          personaName={summary?.personaName ?? persona?.name}
+          modelId={summary?.personaModelId ?? persona?.modelId}
+          chat={summary}
+        />
         <div className="relative min-h-0 flex-1">
           <div
             ref={scrollRef}
@@ -417,14 +465,20 @@ function ChatPane({ chatId }: { chatId: string }) {
               {messages.length === 0 && !loadError && (
                 <div className="grid justify-items-center gap-3 py-16 text-center">
                   <p className="text-muted-foreground font-heading text-lg italic">Say something to get started.</p>
-                  {summary && personas && (
-                    <EmptyChatPersona
+                  {!chatId && personas && (
+                    <DraftPersona
                       personas={personas}
                       current={persona}
-                      currentId={summary.personaId}
-                      currentName={summary.personaName}
-                      disabled={personaBusy || streaming}
-                      onChange={(id) => void changePersona(id)}
+                      isDefault={!!persona && persona.id === defaultPersonaId}
+                      disabled={streaming}
+                      onChange={setDraftPersonaId}
+                      onToggleDefault={() => {
+                        if (!persona) return
+                        setDefaultPersona(persona.id === defaultPersonaId ? null : persona.id).catch((e) =>
+                          setActionError(e instanceof Error ? e.message : String(e)),
+                        )
+                      }}
+                      onCreate={() => setCreatingPersona(true)}
                     />
                   )}
                 </div>
@@ -466,7 +520,7 @@ function ChatPane({ chatId }: { chatId: string }) {
         <form onSubmit={send} className="px-2 pb-2 sm:px-6 sm:pb-5">
           <div className="mx-auto max-w-3xl">
             {uploads.length > 0 && <UploadStrip uploads={uploads} onRemove={removeUpload} />}
-            {imageError && <p className="text-destructive mb-2 text-sm">{imageError}</p>}
+            {composerError && <p className="text-destructive mb-2 text-sm">{composerError}</p>}
             <div className="bg-card focus-within:border-accent-ink/60 flex items-end gap-1 rounded-lg border p-1.5 shadow-[0_1px_0_var(--border),0_8px_24px_-12px_color-mix(in_oklab,var(--foreground)_25%,transparent)] transition-colors sm:gap-1.5 sm:p-2">
               <input
                 ref={fileInputRef}
@@ -535,6 +589,16 @@ function ChatPane({ chatId }: { chatId: string }) {
           </div>
         </form>
 
+        <PersonaDialog
+          open={creatingPersona}
+          onOpenChange={setCreatingPersona}
+          persona={null}
+          onSaved={(p) => {
+            setDraftPersonaId(p.id)
+            void loadPersonas()
+          }}
+        />
+
         {dragging && (
           <div className="bg-background/80 border-primary text-foreground pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium backdrop-blur-xs">
             Drop images to attach
@@ -584,36 +648,48 @@ function UploadStrip({ uploads, onRemove }: { uploads: PendingUpload[]; onRemove
   )
 }
 
-// Who you're about to talk to. Changeable until the first message is sent; switching personas
-// mid-conversation isn't supported (yet), so after that the persona is fixed.
-function EmptyChatPersona({
+// Who a draft will talk to. Only drafts have a choice: the persona is part of the chat once its
+// first message creates it (switching mid-conversation isn't supported yet).
+function DraftPersona({
   personas,
   current,
-  currentId,
-  currentName,
+  isDefault,
   disabled,
   onChange,
+  onToggleDefault,
+  onCreate,
 }: {
   personas: Persona[]
   current: Persona | undefined
-  currentId: string
-  currentName: string
+  isDefault: boolean
   disabled: boolean
   onChange: (personaId: string) => void
+  onToggleDefault: () => void
+  onCreate: () => void
 }) {
+  if (!current) {
+    return (
+      <div className="grid max-w-sm justify-items-center gap-2">
+        <p className="text-muted-foreground text-sm">You need a persona to chat with: a name, a model and a system prompt.</p>
+        <Button onClick={onCreate}>
+          <Plus data-icon="inline-start" />
+          Create a persona
+        </Button>
+      </div>
+    )
+  }
   return (
     <div className="grid max-w-sm justify-items-center gap-1.5">
-      {personas.length > 1 ? (
-        <label className="text-muted-foreground flex items-center gap-2 text-sm">
-          Talking to
+      <div className="text-muted-foreground flex items-center gap-1.5 text-sm">
+        <label htmlFor="draft-persona">Talking to</label>
+        {personas.length > 1 ? (
           <select
+            id="draft-persona"
             className={cn(selectClass, 'text-foreground w-auto max-w-56 font-medium pointer-coarse:h-10')}
-            value={currentId}
+            value={current.id}
             disabled={disabled}
             onChange={(e) => onChange(e.target.value)}
           >
-            {/* A persona that is no longer usable (e.g. unshared) still shows as the current one. */}
-            {!current && <option value={currentId}>{currentName}</option>}
             {personas.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -621,13 +697,22 @@ function EmptyChatPersona({
               </option>
             ))}
           </select>
-        </label>
-      ) : (
-        <p className="text-muted-foreground text-sm">
-          Talking to <span className="text-foreground font-medium">{currentName}</span>
-        </p>
-      )}
-      {current?.description && <p className="text-muted-foreground text-xs">{current.description}</p>}
+        ) : (
+          <span className="text-foreground font-medium">{current.name}</span>
+        )}
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-pressed={isDefault}
+          aria-label={isDefault ? 'Stop using as default for new chats' : 'Use as default for new chats'}
+          title={isDefault ? 'Default for new chats (click to unset)' : 'Use as default for new chats'}
+          onClick={onToggleDefault}
+          className="pointer-coarse:size-10"
+        >
+          <Star className={cn(isDefault && 'fill-accent-ink text-accent-ink')} />
+        </Button>
+      </div>
+      {current.description && <p className="text-muted-foreground text-xs">{current.description}</p>}
     </div>
   )
 }
