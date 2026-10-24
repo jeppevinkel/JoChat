@@ -273,16 +273,26 @@ public class AnthropicChatProvider : IChatCompletionProvider
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max].TrimEnd() + "…";
 
+    // Files are only captured from $OUTPUT_DIR (fresh per bash call), and the model is never told
+    // which files were captured, so it needs to be explicit about the hand-off.
+    private const string CodeExecutionGuidance =
+        "When code execution produces a file the user should receive, copy it into \"$OUTPUT_DIR\" in the same " +
+        "command that creates it (e.g. `... && cp out.csv \"$OUTPUT_DIR/\" && ls \"$OUTPUT_DIR\"`). Files there are " +
+        "delivered to the user automatically as downloads; files written anywhere else are not.";
+
     private static MessageCreateParams BuildParams(ChatRequest request, List<MessageParam> messages)
     {
         // The persona prompt is the stable prefix across every turn of a chat, so mark it
         // as a cache breakpoint (short prompts simply won't cache; that's harmless).
+        var systemText = request.SystemPrompt;
+        if (request.Tools?.Contains(ChatTools.CodeExecution) == true)
+            systemText = string.IsNullOrWhiteSpace(systemText) ? CodeExecutionGuidance : $"{systemText}\n\n{CodeExecutionGuidance}";
         MessageCreateParamsSystem? system = null;
-        if (!string.IsNullOrWhiteSpace(request.SystemPrompt))
+        if (!string.IsNullOrWhiteSpace(systemText))
         {
             system = new List<TextBlockParam>
             {
-                new() { Text = request.SystemPrompt, CacheControl = new CacheControlEphemeral() },
+                new() { Text = systemText, CacheControl = new CacheControlEphemeral() },
             };
         }
 
