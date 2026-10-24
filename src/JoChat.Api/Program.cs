@@ -130,12 +130,14 @@ if (serveSpa)
 
 app.MapScim("/v2"); // Authentik SCIM provider points here; uses its own ScimToken scheme
 app.MapConfigEndpoints();
+app.MapPublicShareEndpoints();
 
 var api = app.MapGroup("/api").RequireAuthorization(Policies.User);
 api.MapMeEndpoints();
 api.MapPersonaEndpoints();
 api.MapModelEndpoints();
 api.MapChatEndpoints();
+api.MapChatShareEndpoints();
 api.MapAttachmentEndpoints();
 api.MapImageEndpoints();
 api.MapTtsEndpoints();

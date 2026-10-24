@@ -19,6 +19,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Attachment> Attachments => Set<Attachment>();
     public DbSet<ModelDefinition> ModelDefinitions => Set<ModelDefinition>();
     public DbSet<UsageRecord> UsageRecords => Set<UsageRecord>();
+    public DbSet<ChatShare> ChatShares => Set<ChatShare>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -55,6 +56,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             e.HasOne(x => x.Message).WithMany(m => m.Attachments).HasForeignKey(x => x.MessageId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        b.Entity<ChatShare>(e =>
+        {
+            e.HasOne(x => x.Chat).WithMany().HasForeignKey(x => x.ChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ChatId).IsUnique();
+            e.HasIndex(x => x.Token).IsUnique();
         });
 
         b.Entity<ModelDefinition>(e =>

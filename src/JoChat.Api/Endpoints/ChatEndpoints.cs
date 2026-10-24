@@ -18,7 +18,12 @@ public static class ChatEndpoints
             var user = await current.GetRequiredUserAsync(ct);
             return await db.Chats.Where(c => c.OwnerId == user.Id)
                 .OrderByDescending(c => c.UpdatedAt)
-                .Select(c => new { c.Id, c.Title, c.PersonaId, c.UpdatedAt })
+                .Select(c => new
+                {
+                    c.Id, c.Title, c.PersonaId, c.UpdatedAt,
+                    PersonaName = c.Persona!.Name, PersonaModelId = c.Persona.ModelId,
+                    IsShared = db.ChatShares.Any(s => s.ChatId == c.Id),
+                })
                 .ToListAsync(ct);
         });
 

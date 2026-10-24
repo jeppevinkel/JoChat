@@ -98,6 +98,36 @@ namespace JoChat.Infrastructure.Migrations.Postgres
                     b.ToTable("Chats");
                 });
 
+            modelBuilder.Entity("JoChat.Core.Entities.ChatShare", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AllowAnonymous")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("ChatId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique();
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("ChatShares");
+                });
+
             modelBuilder.Entity("JoChat.Core.Entities.Message", b =>
                 {
                     b.Property<Guid>("Id")
@@ -481,6 +511,17 @@ namespace JoChat.Infrastructure.Migrations.Postgres
                     b.Navigation("Owner");
 
                     b.Navigation("Persona");
+                });
+
+            modelBuilder.Entity("JoChat.Core.Entities.ChatShare", b =>
+                {
+                    b.HasOne("JoChat.Core.Entities.Chat", "Chat")
+                        .WithMany()
+                        .HasForeignKey("ChatId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Chat");
                 });
 
             modelBuilder.Entity("JoChat.Core.Entities.Message", b =>
