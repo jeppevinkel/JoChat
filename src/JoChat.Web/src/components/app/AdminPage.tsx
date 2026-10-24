@@ -219,6 +219,16 @@ function ModelForm({ model, onSaved, onOpenChange }: { model: AdminModel | null;
 
 // ----------------------------------------------------------------- usage
 
+function relativeTime(iso: string): string {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} min ago`
+  const hours = Math.round(minutes / 60)
+  if (hours < 48) return `${hours} h ago`
+  const days = Math.round(hours / 24)
+  return days < 30 ? `${days} d ago` : new Date(iso).toLocaleDateString()
+}
+
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10)
 }
@@ -349,7 +359,9 @@ function UsersTab() {
             <th className="py-1 pr-3 font-medium">Username</th>
             <th className="py-1 pr-3 font-medium">Display name</th>
             <th className="py-1 pr-3 font-medium">Active</th>
-            <th className="py-1 font-medium">First seen</th>
+            <th className="py-1 pr-3 font-medium">Role</th>
+            <th className="py-1 pr-3 font-medium">First seen</th>
+            <th className="py-1 font-medium">Last seen</th>
           </tr>
         </thead>
         <tbody>
@@ -358,7 +370,11 @@ function UsersTab() {
               <td className="py-1.5 pr-3">{u.userName}</td>
               <td className="py-1.5 pr-3">{u.displayName ?? <span className="text-muted-foreground">—</span>}</td>
               <td className="py-1.5 pr-3">{u.active ? 'yes' : 'no'}</td>
-              <td className="py-1.5">{u.firstSeen ? new Date(u.firstSeen).toLocaleDateString() : <span className="text-muted-foreground">never signed in</span>}</td>
+              <td className="py-1.5 pr-3">
+                {u.isAdmin ? 'admin' : u.hasAccess ? 'user' : <span className="text-muted-foreground">no access</span>}
+              </td>
+              <td className="py-1.5 pr-3">{u.firstSeen ? new Date(u.firstSeen).toLocaleDateString() : <span className="text-muted-foreground">never signed in</span>}</td>
+              <td className="py-1.5" title={u.lastSeen ?? undefined}>{u.lastSeen ? relativeTime(u.lastSeen) : <span className="text-muted-foreground">—</span>}</td>
             </tr>
           ))}
         </tbody>

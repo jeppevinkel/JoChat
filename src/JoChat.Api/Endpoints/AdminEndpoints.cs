@@ -1,6 +1,8 @@
 using JoChat.Core.Entities;
+using JoChat.Core.Options;
 using JoChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace JoChat.Api.Endpoints;
 
@@ -63,8 +65,9 @@ public static class AdminEndpoints
 
         group.MapGet("/usage", async (DateTime? from, DateTime? to, AppDbContext db, CancellationToken ct) =>
         {
-            var start = from ?? DateTime.UtcNow.AddDays(-30);
-            var end = to ?? DateTime.UtcNow;
+            // Query-string dates parse as Unspecified; timestamptz parameters must be UTC.
+            var start = DateTime.SpecifyKind(from ?? DateTime.UtcNow.AddDays(-30), DateTimeKind.Utc);
+            var end = DateTime.SpecifyKind(to ?? DateTime.UtcNow, DateTimeKind.Utc);
             var rows = await db.UsageRecords
                 .Where(u => u.CreatedAt >= start && u.CreatedAt < end)
                 .GroupBy(u => new { u.UserId, u.Provider, u.ModelOrVoiceId, u.Kind })
@@ -80,9 +83,12 @@ public static class AdminEndpoints
             return Results.Ok(new { From = start, To = end, Rows = rows });
         });
 
-        group.MapGet("/users", async (AppDbContext db, CancellationToken ct) =>
+        group.MapGet("/users", async (AppDbContext db, IOptions<AuthorizationGroupOptions> groups, CancellationToken ct) =>
         {
-            // Left join so SCIM-provisioned users who haven't logged in yet (no profile) still show.
+            var userGroup = groups.Value.UserGroup;
+            var adminGroup = groups.Value.SuperAdminGroup;
+            // Left join so SCIM-provisioned users who haven't logged in yet (no profile) still show;
+            // role flags come from SCIM group membership, the same source the claims transformation uses.
             var users = await db.ScimUsers
                 .GroupJoin(db.UserProfiles, s => s.Id, p => p.ScimUserId, (s, profiles) => new { s, profiles })
                 .SelectMany(x => x.profiles.DefaultIfEmpty(), (x, p) => new
@@ -94,6 +100,9 @@ public static class AdminEndpoints
                     ProfileId = p != null ? p.Id : (Guid?)null,
                     DisplayName = p != null ? p.DisplayName : null,
                     FirstSeen = p != null ? p.CreatedAt : (DateTime?)null,
+                    LastSeen = p != null ? p.LastSeenAt : null,
+                    HasAccess = db.ScimGroups.Any(g => g.DisplayName == userGroup && g.Members.Any(m => m.Value == x.s.Id)),
+                    IsAdmin = db.ScimGroups.Any(g => g.DisplayName == adminGroup && g.Members.Any(m => m.Value == x.s.Id)),
                 })
                 .OrderBy(u => u.UserName)
                 .ToListAsync(ct);

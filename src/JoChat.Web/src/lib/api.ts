@@ -107,6 +107,9 @@ export interface AdminUser {
   profileId: string | null
   displayName: string | null
   firstSeen: string | null
+  lastSeen: string | null
+  hasAccess: boolean
+  isAdmin: boolean
 }
 
 export interface Me {
