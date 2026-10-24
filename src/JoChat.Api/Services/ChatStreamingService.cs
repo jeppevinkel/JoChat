@@ -76,7 +76,21 @@ public class ChatStreamingService(
 
         var history = new List<ChatRequestMessage>(chat.Messages.Count);
         foreach (var m in chat.Messages)
-            history.Add(new ChatRequestMessage(m.Role, m.Content, await LoadImagesAsync(m, ct)));
+        {
+            if (m.Role == MessageRole.Assistant)
+            {
+                history.Add(new ChatRequestMessage(m.Role, m.Content));
+                // The API only accepts image blocks on user turns, so an image the assistant
+                // generated is shown back to it as a follow-up user turn.
+                var generated = await LoadImagesAsync(m, AttachmentKind.GeneratedImage, ct);
+                if (generated is not null)
+                    history.Add(new ChatRequestMessage(MessageRole.User, "(This is the image you generated.)", generated));
+            }
+            else
+            {
+                history.Add(new ChatRequestMessage(m.Role, m.Content, await LoadImagesAsync(m, AttachmentKind.UploadedImage, ct)));
+            }
+        }
 
         var request = new ChatRequest(
             persona.ModelId, persona.SystemPrompt, history, persona.Temperature, persona.MaxTokens);
@@ -150,9 +164,10 @@ public class ChatStreamingService(
         }
     }
 
-    private async Task<IReadOnlyList<ChatRequestImage>?> LoadImagesAsync(Message m, CancellationToken ct)
+    private async Task<IReadOnlyList<ChatRequestImage>?> LoadImagesAsync(
+        Message m, AttachmentKind kind, CancellationToken ct)
     {
-        var images = m.Attachments.Where(a => a.Kind == AttachmentKind.UploadedImage).ToList();
+        var images = m.Attachments.Where(a => a.Kind == kind).ToList();
         if (images.Count == 0) return null;
 
         var result = new List<ChatRequestImage>(images.Count);
