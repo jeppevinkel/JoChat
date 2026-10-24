@@ -1,5 +1,5 @@
 import { useAuth } from 'react-oidc-context'
-import { useMemo } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { readSse } from './sse'
 
 export interface ChatSummary {
@@ -333,8 +333,16 @@ export function createApi(getToken: () => string | undefined) {
 
 export type Api = ReturnType<typeof createApi>
 
+// One client per component for its whole lifetime, reading the current token at request time.
+// Rebuilding it per token made every silent renewal (every few minutes) look like a dependency
+// change to effects keyed on the api: forms reset, and an open empty chat was deleted as if left.
 export function useApi(): Api {
   const auth = useAuth()
-  const token = auth.user?.access_token
-  return useMemo(() => createApi(() => token), [token])
+  const tokenRef = useRef(auth.user?.access_token)
+  useLayoutEffect(() => {
+    tokenRef.current = auth.user?.access_token
+  }, [auth.user])
+  // oxlint-disable-next-line react/refs -- read lazily when a request is made, not during render
+  const [api] = useState(() => createApi(() => tokenRef.current))
+  return api
 }

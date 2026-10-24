@@ -97,14 +97,21 @@ function ChatPane({ chatId }: { chatId: string }) {
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- async fetch; setState only runs after the await
     void load()
-    return () => {
+  }, [load])
+
+  // Leaving the chat: stop any reply in flight, and drop the chat if it was opened but never
+  // used. Runs on unmount only (the pane is keyed by chat id) — never on a dependency change,
+  // which would delete the chat out from under you.
+  const leaveRef = useRef(() => {})
+  useEffect(() => {
+    leaveRef.current = () => {
       abortRef.current?.abort()
-      // A chat that was opened but never used is just clutter: drop it on the way out.
       if (loadedRef.current && messagesRef.current.length === 0 && !streamingRef.current) {
         api.deleteChat(chatId).then(() => refresh()).catch(() => {})
       }
     }
-  }, [load, api, chatId, refresh])
+  }, [api, chatId, refresh])
+  useEffect(() => () => leaveRef.current(), [])
 
   // Auto-scroll follows new content only while attached. Detaching is decided from user
   // intent (wheel up, touch drag down, PageUp/ArrowUp/Home) rather than from the resulting
