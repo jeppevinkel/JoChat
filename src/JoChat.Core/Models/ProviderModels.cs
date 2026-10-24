@@ -23,10 +23,14 @@ public record ToolStep(string Kind, string Tool, string Label, bool IsError = fa
     public const string Result = "result";
 }
 
+/// <param name="RawContent">Provider-native content blocks of a previous assistant turn (JSON), replayed verbatim
+/// when <paramref name="RawContentFormat"/> matches the provider; otherwise <paramref name="Text"/> is used.</param>
 public record ChatRequestMessage(
     Enums.MessageRole Role,
     string Text,
-    IReadOnlyList<ChatRequestImage>? Images = null);
+    IReadOnlyList<ChatRequestImage>? Images = null,
+    string? RawContent = null,
+    string? RawContentFormat = null);
 
 public record ChatRequestImage(string MimeType, ReadOnlyMemory<byte> Data);
 
@@ -35,7 +39,12 @@ public abstract record ChatStreamEvent
     public sealed record TextDelta(string Text) : ChatStreamEvent;
     public sealed record ToolUse(string Tool, string Label) : ChatStreamEvent;
     public sealed record ToolResult(string Tool, string Label, bool IsError) : ChatStreamEvent;
-    public sealed record Completed(int TokensIn, int TokensOut, string StopReason) : ChatStreamEvent;
+    /// <summary>A file the model produced (e.g. from code execution).</summary>
+    public sealed record File(string FileName, string MimeType, ReadOnlyMemory<byte> Data) : ChatStreamEvent;
+    /// <param name="RawContent">The assistant turn as provider-native content blocks (JSON), for faithful replay.</param>
+    public sealed record Completed(
+        int TokensIn, int TokensOut, string StopReason,
+        string? RawContent = null, string? RawContentFormat = null) : ChatStreamEvent;
     public sealed record Error(string Message) : ChatStreamEvent;
 }
 

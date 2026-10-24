@@ -13,6 +13,12 @@ public class Message
     public int? TokensOut { get; set; }
     /// <summary>JSON array of ToolStep recorded while the reply streamed; null when no tools ran.</summary>
     public string? ToolActivity { get; set; }
+    /// <summary>
+    /// Provider-native content of an assistant turn (tool calls, results, thinking) so later turns
+    /// replay exactly what happened instead of just the text; cleared when the text is edited.
+    /// </summary>
+    public string? ProviderContent { get; set; }
+    public string? ProviderContentFormat { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<Attachment> Attachments { get; set; } = [];
 }

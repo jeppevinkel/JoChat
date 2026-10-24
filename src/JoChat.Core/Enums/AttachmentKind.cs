@@ -1,3 +1,3 @@
 namespace JoChat.Core.Enums;
 
-public enum AttachmentKind { UploadedImage, GeneratedImage, TtsAudio }
+public enum AttachmentKind { UploadedImage, GeneratedImage, TtsAudio, GeneratedFile }

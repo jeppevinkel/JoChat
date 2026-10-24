@@ -17,7 +17,8 @@ public static class ChatHistory
         {
             if (m.Role == MessageRole.Assistant)
             {
-                history.Add(new ChatRequestMessage(m.Role, m.Content));
+                history.Add(new ChatRequestMessage(m.Role, m.Content,
+                    RawContent: m.ProviderContent, RawContentFormat: m.ProviderContentFormat));
                 // The API only accepts image blocks on user turns, so an image the assistant
                 // generated is shown back to it as a follow-up user turn.
                 var generated = await LoadImagesAsync(m, AttachmentKind.GeneratedImage, storage, ct);

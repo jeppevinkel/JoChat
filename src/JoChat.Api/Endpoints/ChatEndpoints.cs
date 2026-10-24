@@ -60,7 +60,7 @@ public static class ChatEndpoints
                     m.TokensIn, m.TokensOut, m.CreatedAt, m.ToolActivity,
                     Attachments = m.Attachments.Select(a => new
                     {
-                        a.Id, Kind = a.Kind.ToString(), a.MimeType, a.Width, a.Height,
+                        a.Id, Kind = a.Kind.ToString(), a.MimeType, a.FileName, a.SizeBytes, a.Width, a.Height,
                     }).ToList(),
                 })
                 .ToListAsync(ct);
@@ -98,6 +98,9 @@ public static class ChatEndpoints
             if (message is null) return Results.NotFound();
 
             message.Content = req.Content;
+            // The provider-native record no longer matches the text; later turns fall back to text.
+            message.ProviderContent = null;
+            message.ProviderContentFormat = null;
             var audio = message.Attachments.Where(a => a.Kind == AttachmentKind.TtsAudio).ToList();
             db.Attachments.RemoveRange(audio);
             await db.SaveChangesAsync(ct);

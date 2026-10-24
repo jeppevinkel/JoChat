@@ -31,6 +31,9 @@ namespace JoChat.Infrastructure.Migrations.Postgres
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<string>("FileName")
+                        .HasColumnType("text");
+
                     b.Property<int?>("Height")
                         .HasColumnType("integer");
 
@@ -113,6 +116,12 @@ namespace JoChat.Infrastructure.Migrations.Postgres
 
                     b.Property<Guid?>("ParentMessageId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("ProviderContent")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ProviderContentFormat")
+                        .HasColumnType("text");
 
                     b.Property<int>("Role")
                         .HasColumnType("integer");

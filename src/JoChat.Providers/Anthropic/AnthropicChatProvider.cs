@@ -21,6 +21,9 @@ public class AnthropicChatProvider : IChatCompletionProvider
     private const long MaxToolUses = 8;
     private const int MaxTurnResumes = 4;
 
+    /// <summary>Format tag for replayed content so another provider never tries to interpret it.</summary>
+    public const string ContentFormat = "anthropic.messages";
+
     private readonly AnthropicClient _client;
     private readonly bool _configured;
 
@@ -51,6 +54,7 @@ public class AnthropicChatProvider : IChatCompletionProvider
         var messages = request.Messages.Select(ToMessageParam).ToList();
         long tokensIn = 0, tokensOut = 0;
         var stopReason = "end_turn";
+        var produced = new List<JsonElement>(); // every content block of this turn, across pause_turn rounds
 
         // Server tools can pause a long turn (stop_reason pause_turn); the partial assistant
         // turn is replayed verbatim and the request re-sent to let it continue.
@@ -130,15 +134,51 @@ public class AnthropicChatProvider : IChatCompletionProvider
                 }
             }
 
+            var assistant = aggregator.Message();
+            produced.AddRange(assistant.Content.Select(b => b.Json));
+
+            // Files the sandbox wrote (code execution) are fetched so they reach the user.
+            if (enabled.Contains(ChatTools.CodeExecution))
+            {
+                foreach (var fileId in ProducedFileIds(assistant))
+                {
+                    ChatStreamEvent.File? file = null;
+                    try { file = await DownloadAsync(fileId, ct); }
+                    catch (AnthropicException) { /* the reply still stands without the file */ }
+                    if (file is not null) yield return file;
+                }
+            }
+
             if (stopReason != "pause_turn" || round >= MaxTurnResumes) break;
 
             // Replay what the model produced so far exactly as received, then continue.
-            var assistant = aggregator.Message();
             messages.Add(new AssistantMessageParam(
                 new MessageContentParam(assistant.Content.Select(b => new ContentBlockParam(b.Json)).ToList())));
         }
 
-        yield return new ChatStreamEvent.Completed((int)tokensIn, (int)tokensOut, stopReason);
+        yield return new ChatStreamEvent.Completed((int)tokensIn, (int)tokensOut, stopReason,
+            produced.Count == 0 ? null : JsonSerializer.Serialize(produced), ContentFormat);
+    }
+
+    private static IEnumerable<string> ProducedFileIds(Message message)
+    {
+        foreach (var block in message.Content)
+        {
+            if (!block.TryPickBashCodeExecutionToolResult(out var exec)) continue;
+            if (!exec.Content.TryPickBashCodeExecutionResultBlock(out var result)) continue;
+            foreach (var output in result.Content)
+                yield return output.FileID;
+        }
+    }
+
+    private async Task<ChatStreamEvent.File> DownloadAsync(string fileId, CancellationToken ct)
+    {
+        var meta = await _client.Files.RetrieveMetadata(fileId, cancellationToken: ct);
+        var response = await _client.Files.Download(fileId, cancellationToken: ct);
+        await using var stream = await response.ReadAsStream(ct);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer, ct);
+        return new ChatStreamEvent.File(meta.Filename, meta.MimeType, buffer.ToArray());
     }
 
     private sealed class PendingToolUse(string tool)
@@ -198,6 +238,7 @@ public class AnthropicChatProvider : IChatCompletionProvider
                 var firstLine = result.Stdout.Split('\n', 2)[0].Trim();
                 var summary = result.ReturnCode == 0 ? "Ran code" : $"Code exited with {result.ReturnCode}";
                 if (firstLine.Length > 0) summary += $": {Truncate(firstLine, 80)}";
+                if (result.Content.Count > 0) summary += $" · {result.Content.Count} file{(result.Content.Count == 1 ? "" : "s")}";
                 yield return new ChatStreamEvent.ToolResult(ChatTools.CodeExecution, summary, result.ReturnCode != 0);
             }
             else if (exec.Content.TryPickBashCodeExecutionToolResultError(out var err))
@@ -271,6 +312,14 @@ public class AnthropicChatProvider : IChatCompletionProvider
 
     private static MessageParam ToMessageParam(ChatRequestMessage m)
     {
+        if (m.Role == MessageRole.Assistant && m.RawContent is not null && m.RawContentFormat == ContentFormat)
+        {
+            // Replay the turn as the model produced it, tool calls and results included, so it
+            // knows what it actually did rather than seeing only the prose.
+            var blocks = JsonSerializer.Deserialize<List<JsonElement>>(m.RawContent) ?? [];
+            if (blocks.Count > 0)
+                return new AssistantMessageParam(new MessageContentParam(blocks.Select(b => new ContentBlockParam(b)).ToList()));
+        }
         MessageContentParam content = m.Images is { Count: > 0 } ? ToContentBlocks(m) : m.Text;
         return m.Role == MessageRole.Assistant
             ? new AssistantMessageParam(content)

@@ -65,7 +65,10 @@ public static class AttachmentEndpoints
             if (attachment is null) return Results.NotFound();
 
             var stream = await storage.OpenReadAsync(attachment.StoragePath, ct);
-            return Results.File(stream, attachment.MimeType, enableRangeProcessing: true);
+            // Produced files download under their original name; images and audio stream inline.
+            return attachment.Kind == AttachmentKind.GeneratedFile
+                ? Results.File(stream, attachment.MimeType, fileDownloadName: attachment.FileName ?? "file")
+                : Results.File(stream, attachment.MimeType, enableRangeProcessing: true);
         });
 
         group.MapDelete("/attachments/{id:guid}", async (Guid id, AppDbContext db,

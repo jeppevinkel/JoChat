@@ -134,6 +134,7 @@ public class ChatStreamingService(
 
         var reply = new System.Text.StringBuilder();
         var steps = new List<ToolStep>();
+        var files = new List<ChatStreamEvent.File>();
         ChatStreamEvent.Completed? completed = null;
         try
         {
@@ -150,6 +151,9 @@ public class ChatStreamingService(
                     case ChatStreamEvent.ToolResult result:
                         steps.Add(new ToolStep(ToolStep.Result, result.Tool, result.Label, result.IsError));
                         break;
+                    case ChatStreamEvent.File file:
+                        files.Add(file);
+                        continue; // bytes stay server-side; the client sees the attachment after reload
                     case ChatStreamEvent.Completed done:
                         completed = done;
                         break;
@@ -162,7 +166,7 @@ public class ChatStreamingService(
             // Persist whatever the model produced even if the client disconnected mid-stream,
             // so the conversation history stays consistent with what was billed.
             if (completed is not null || reply.Length > 0 || steps.Count > 0)
-                await PersistReplyAsync(chat, user, persona, parent, reply.ToString(), steps, completed);
+                await PersistReplyAsync(chat, user, persona, parent, reply.ToString(), steps, files, completed);
         }
     }
 
@@ -177,9 +181,9 @@ public class ChatStreamingService(
 
     private async Task PersistReplyAsync(
         Chat chat, UserProfile user, Persona persona, Message? parent,
-        string content, List<ToolStep> steps, ChatStreamEvent.Completed? completed)
+        string content, List<ToolStep> steps, List<ChatStreamEvent.File> files, ChatStreamEvent.Completed? completed)
     {
-        db.Messages.Add(new Message
+        var message = new Message
         {
             Id = Guid.NewGuid(),
             ChatId = chat.Id,
@@ -189,8 +193,38 @@ public class ChatStreamingService(
             TokensIn = completed?.TokensIn,
             TokensOut = completed?.TokensOut,
             ToolActivity = steps.Count == 0 ? null : JsonSerializer.Serialize(steps, JsonOptions),
+            ProviderContent = completed?.RawContent,
+            ProviderContentFormat = completed?.RawContent is null ? null : completed.RawContentFormat,
             CreatedAt = DateTime.UtcNow,
-        });
+        };
+        db.Messages.Add(message);
+
+        foreach (var file in files)
+        {
+            try
+            {
+                await using var ms = new MemoryStream(file.Data.ToArray());
+                var path = await storage.SaveAsync(ms, file.MimeType, CancellationToken.None);
+                var isImage = file.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+                db.Attachments.Add(new Attachment
+                {
+                    Id = Guid.NewGuid(),
+                    MessageId = message.Id,
+                    OwnerId = user.Id,
+                    // Images the sandbox produced display inline (and get shown back to the model).
+                    Kind = isImage ? AttachmentKind.GeneratedImage : AttachmentKind.GeneratedFile,
+                    StoragePath = path,
+                    MimeType = file.MimeType,
+                    FileName = file.FileName,
+                    SizeBytes = file.Data.Length,
+                    CreatedAt = DateTime.UtcNow,
+                });
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to store produced file {FileName}", file.FileName);
+            }
+        }
         if (completed is not null)
         {
             db.UsageRecords.Add(new UsageRecord

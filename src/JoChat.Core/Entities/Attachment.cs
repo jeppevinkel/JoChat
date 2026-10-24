@@ -9,6 +9,8 @@ public class Attachment
     public Enums.AttachmentKind Kind { get; set; }
     public required string StoragePath { get; set; }
     public required string MimeType { get; set; }
+    /// <summary>Original name for files the model produced; uploads and generated images have none.</summary>
+    public string? FileName { get; set; }
     public long SizeBytes { get; set; }
     public int? Width { get; set; }
     public int? Height { get; set; }
