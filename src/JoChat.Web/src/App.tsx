@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/app/PageHeader'
 
 const PersonasPage = lazy(() => import('@/components/app/PersonasPage'))
 const AdminPage = lazy(() => import('@/components/app/AdminPage'))
+const AdminChatPage = lazy(() => import('@/components/app/AdminChatPage'))
 const SharePage = lazy(() => import('@/components/app/SharePage'))
 
 function Empty() {
@@ -42,6 +43,10 @@ function Empty() {
 // Hides the page from non-admins; the API enforces the SuperAdmin policy regardless.
 function AdminRoute() {
   return useIsAdmin() ? <AdminPage /> : <Empty />
+}
+
+function AdminChatRoute() {
+  return useIsAdmin() ? <AdminChatPage /> : <Empty />
 }
 
 function PageFallback() {
@@ -115,6 +120,7 @@ function AuthenticatedApp() {
                 <Route path="/chats/:id" element={<ChatView />} />
                 <Route path="/personas" element={<PersonasPage />} />
                 <Route path="/admin" element={<AdminRoute />} />
+                <Route path="/admin/chats/:id" element={<AdminChatRoute />} />
               </Routes>
             </Suspense>
           </AppShell>

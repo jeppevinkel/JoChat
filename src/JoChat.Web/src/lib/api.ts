@@ -152,6 +152,79 @@ export interface AdminUser {
   lastSeen: string | null
   hasAccess: boolean
   isAdmin: boolean
+  chats: number
+  messagesSent: number
+  personas: number
+  lastChatAt: string | null
+}
+
+/** Any user's persona, private ones included (admin moderation view). */
+export interface AdminPersona {
+  id: string
+  ownerId: string
+  name: string
+  description: string | null
+  systemPrompt: string
+  provider: string
+  modelId: string
+  maxTokens: number | null
+  enableWebSearch: boolean
+  enableWebFetch: boolean
+  enableCodeExecution: boolean
+  isShared: boolean
+  updatedAt: string
+  chats: number
+}
+
+export interface AdminChatRow {
+  id: string
+  title: string
+  ownerId: string
+  createdAt: string
+  updatedAt: string
+  personaName: string
+  personaModelId: string
+  messages: number
+  isShared: boolean
+  /** Excerpt around the first match when searching. */
+  snippet: string | null
+}
+
+export interface AdminChatQuery {
+  userId?: string
+  q?: string
+  from?: string
+  to?: string
+  page?: number
+}
+
+export interface AdminChat {
+  id: string
+  title: string
+  ownerId: string
+  createdAt: string
+  updatedAt: string
+  isShared: boolean
+  persona: { id: string; name: string; description: string | null; modelId: string; systemPrompt: string } | null
+  messages: SharedMessage[]
+}
+
+export interface AuditEntry {
+  id: string
+  adminId: string
+  action: 'view_chat' | 'search_messages'
+  targetUserId: string | null
+  chatId: string | null
+  detail: string | null
+  createdAt: string
+  chatExists: boolean
+}
+
+export interface Page<T> {
+  total: number
+  page: number
+  pageSize: number
+  items: T[]
 }
 
 export interface Me {
@@ -285,6 +358,21 @@ export function createApi(getToken: () => string | undefined) {
           `/admin/usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
         ),
       users: () => json<AdminUser[]>('/admin/users'),
+      personas: (userId?: string) =>
+        json<AdminPersona[]>(`/admin/personas${userId ? `?userId=${encodeURIComponent(userId)}` : ''}`),
+      // Searching (q) and opening a chat are recorded in the admin audit log.
+      chats: (query: AdminChatQuery) => {
+        const params = new URLSearchParams()
+        for (const [k, v] of Object.entries(query)) if (v !== undefined && v !== '') params.set(k, String(v))
+        return json<Page<AdminChatRow>>(`/admin/chats?${params}`)
+      },
+      chat: (id: string) => json<AdminChat>(`/admin/chats/${id}`),
+      attachmentBlobUrl: async (id: string): Promise<string> => {
+        const res = await fetch(`/api/admin/attachments/${id}`, { headers: headers() })
+        await throwIfFailed(res)
+        return URL.createObjectURL(await res.blob())
+      },
+      audit: (page = 1) => json<Page<AuditEntry>>(`/admin/audit?page=${page}`),
     },
 
     share: {

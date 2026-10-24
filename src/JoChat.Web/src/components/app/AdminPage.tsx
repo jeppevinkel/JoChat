@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Link, useSearchParams } from 'react-router'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,36 +15,55 @@ import { Label } from '@/components/ui/label'
 import { ApiError, useApi, type AdminModel, type AdminUser, type ModelDefinitionRequest, type UsageRow } from '@/lib/api'
 import { guardedClose } from '@/lib/guarded-close'
 import { selectClass } from '@/lib/persona'
+import { relativeTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { AuditTab, ChatsTab, PersonasTab } from './AdminOversight'
 import { PageHeader, PageTitle } from './PageHeader'
 
-type Tab = 'models' | 'usage' | 'users'
+const TABS = [
+  ['models', 'Models'],
+  ['usage', 'Usage'],
+  ['users', 'Users'],
+  ['personas', 'Personas'],
+  ['chats', 'Chats'],
+  ['audit', 'Audit log'],
+] as const
+type Tab = (typeof TABS)[number][0]
 
+// The tab and its filters live in the URL, so going back from a transcript returns to the same
+// filtered list, and a view can be linked.
 export default function AdminPage() {
-  const [tab, setTab] = useState<Tab>('models')
+  const [params, setParams] = useSearchParams()
+  const tab: Tab = TABS.some(([t]) => t === params.get('tab')) ? (params.get('tab') as Tab) : 'models'
   return (
     <>
       <PageHeader>
         <PageTitle>Admin</PageTitle>
-        <nav className="bg-muted flex shrink-0 gap-1 rounded-lg p-1 text-sm">
-          {(['models', 'usage', 'users'] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              aria-pressed={tab === t}
-              className={cn('rounded-md px-2.5 py-1 capitalize sm:px-3 pointer-coarse:py-1.5', tab === t && 'bg-background shadow-xs')}
-            >
-              {t}
-            </button>
-          ))}
-        </nav>
       </PageHeader>
+      <nav className="border-border flex shrink-0 gap-1 overflow-x-auto border-b px-2 text-sm sm:px-4" aria-label="Admin sections">
+        {TABS.map(([t, label]) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setParams({ tab: t })}
+            aria-current={tab === t ? 'page' : undefined}
+            className={cn(
+              'text-muted-foreground hover:text-foreground -mb-px shrink-0 border-b-2 border-transparent px-3 py-2.5 whitespace-nowrap pointer-coarse:py-3',
+              tab === t && 'border-accent-ink text-foreground font-medium',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex max-w-4xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
           {tab === 'models' && <ModelsTab />}
           {tab === 'usage' && <UsageTab />}
           {tab === 'users' && <UsersTab />}
+          {tab === 'personas' && <PersonasTab />}
+          {tab === 'chats' && <ChatsTab />}
+          {tab === 'audit' && <AuditTab />}
         </div>
       </div>
     </>
@@ -232,16 +252,6 @@ function ModelForm({ model, onSaved, onOpenChange, onDirtyChange }: { model: Adm
 
 // ----------------------------------------------------------------- usage
 
-function relativeTime(iso: string): string {
-  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60_000)
-  if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${minutes} min ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours} h ago`
-  const days = Math.round(hours / 24)
-  return days < 30 ? `${days} d ago` : new Date(iso).toLocaleDateString()
-}
-
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10)
 }
@@ -366,7 +376,10 @@ function UsersTab() {
 
   return (
     <section className="grid gap-3">
-      <p className="text-muted-foreground text-sm">Accounts provisioned by Authentik via SCIM. "First seen" is the first sign-in to JoChat.</p>
+      <p className="text-muted-foreground text-sm">
+        Accounts provisioned by Authentik via SCIM. "First seen" is the first sign-in to JoChat; the counts link to that
+        user's chats and personas.
+      </p>
       {error && <p className="text-destructive text-sm">{error}</p>}
       <TableScroll>
       <table className="w-full text-sm">
@@ -376,6 +389,10 @@ function UsersTab() {
             <th className="py-1 pr-3 font-medium">Display name</th>
             <th className="py-1 pr-3 font-medium">Active</th>
             <th className="py-1 pr-3 font-medium">Role</th>
+            <th className="py-1 pr-3 text-right font-medium">Chats</th>
+            <th className="py-1 pr-3 text-right font-medium">Messages</th>
+            <th className="py-1 pr-3 text-right font-medium">Personas</th>
+            <th className="py-1 pr-3 font-medium">Last chat</th>
             <th className="py-1 pr-3 font-medium">First seen</th>
             <th className="py-1 font-medium">Last seen</th>
           </tr>
@@ -389,6 +406,14 @@ function UsersTab() {
               <td className="py-1.5 pr-3">
                 {u.isAdmin ? 'admin' : u.hasAccess ? 'user' : <span className="text-muted-foreground">no access</span>}
               </td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">
+                {u.profileId && u.chats > 0 ? <CountLink to={`?tab=chats&user=${u.profileId}`}>{u.chats}</CountLink> : u.chats}
+              </td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">{u.messagesSent.toLocaleString()}</td>
+              <td className="py-1.5 pr-3 text-right tabular-nums">
+                {u.profileId && u.personas > 0 ? <CountLink to={`?tab=personas&user=${u.profileId}`}>{u.personas}</CountLink> : u.personas}
+              </td>
+              <td className="py-1.5 pr-3" title={u.lastChatAt ?? undefined}>{u.lastChatAt ? relativeTime(u.lastChatAt) : <span className="text-muted-foreground">—</span>}</td>
               <td className="py-1.5 pr-3">{u.firstSeen ? new Date(u.firstSeen).toLocaleDateString() : <span className="text-muted-foreground">never signed in</span>}</td>
               <td className="py-1.5" title={u.lastSeen ?? undefined}>{u.lastSeen ? relativeTime(u.lastSeen) : <span className="text-muted-foreground">—</span>}</td>
             </tr>
@@ -403,4 +428,12 @@ function UsersTab() {
 // Lets wide tables scroll sideways on narrow screens instead of squashing their columns.
 function TableScroll({ children }: { children: React.ReactNode }) {
   return <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 [&_table]:min-w-xl [&_td]:whitespace-nowrap">{children}</div>
+}
+
+function CountLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link to={to} className="decoration-accent-ink underline underline-offset-2 hover:text-foreground">
+      {children}
+    </Link>
+  )
 }
