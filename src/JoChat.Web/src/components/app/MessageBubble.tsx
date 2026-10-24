@@ -79,7 +79,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
       <div
         className={cn(
           'relative min-w-0 max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
+          isUser ? 'bg-user-bubble' : 'bg-muted',
           editing && 'w-[85%]',
         )}
       >
@@ -124,7 +124,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={onKeyDown}
               rows={Math.min(12, Math.max(3, draft.split('\n').length))}
-              className={cn('bg-background text-foreground resize-y', isUser && 'border-primary-foreground/30')}
+              className="bg-background text-foreground resize-y"
               disabled={saving}
             />
             <div className="flex items-center justify-end gap-1 text-xs">
