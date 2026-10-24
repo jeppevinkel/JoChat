@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Route, Routes } from 'react-router'
 import { useAuth } from 'react-oidc-context'
 import { ChatsProvider } from '@/lib/chats-context'
@@ -24,10 +24,27 @@ function Empty() {
   )
 }
 
+// Remembers that this browser has signed in before, so an expired session is renewed through
+// Authentik's own session (no password prompt) instead of landing on the login card.
+const SIGNED_IN_KEY = 'jochat:signed-in'
+
 export default function App() {
   const auth = useAuth()
 
-  if (auth.isLoading) {
+  useEffect(() => {
+    if (auth.isAuthenticated) localStorage.setItem(SIGNED_IN_KEY, '1')
+  }, [auth.isAuthenticated])
+
+  const shouldResume =
+    !auth.isLoading && !auth.isAuthenticated && !auth.activeNavigator && !auth.error && localStorage.getItem(SIGNED_IN_KEY) === '1'
+  useEffect(() => {
+    if (!shouldResume) return
+    // Cleared first so a failed round-trip shows the login card rather than looping.
+    localStorage.removeItem(SIGNED_IN_KEY)
+    void auth.signinRedirect()
+  }, [shouldResume, auth])
+
+  if (auth.isLoading || shouldResume) {
     return <div className="text-muted-foreground flex h-full items-center justify-center text-sm">Loading…</div>
   }
   if (!auth.isAuthenticated) return <Login />

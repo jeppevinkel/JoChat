@@ -105,7 +105,15 @@ export function Sidebar() {
           >
             <UserCog className="size-4" />
           </NavLink>
-          <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => auth.signoutRedirect()}>
+            <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Sign out"
+            onClick={() => {
+              localStorage.removeItem('jochat:signed-in')
+              void auth.signoutRedirect()
+            }}
+          >
             <LogOut />
           </Button>
         </div>

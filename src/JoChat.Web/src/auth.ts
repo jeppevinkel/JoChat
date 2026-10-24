@@ -26,7 +26,9 @@ export function oidcConfig({ authority, clientId }: RuntimeConfig): AuthProvider
     client_id: clientId,
     redirect_uri: `${window.location.origin}/`,
     post_logout_redirect_uri: `${window.location.origin}/`,
-    scope: 'openid profile email',
+    // offline_access makes Authentik issue a refresh token, which silent renew needs once the
+    // (short) access token expires; without it the session dies with the first token.
+    scope: 'openid profile email offline_access',
     // Authentik serves .well-known/openid-configuration without CORS headers (the token and
     // other endpoints do send them), so discovery from the browser fails. Supplying the
     // metadata statically skips that request; the URLs follow Authentik's fixed layout.
@@ -40,8 +42,8 @@ export function oidcConfig({ authority, clientId }: RuntimeConfig): AuthProvider
       jwks_uri: `${authority}jwks/`,
     },
     automaticSilentRenew: true,
-    // Session storage keeps the token out of long-lived localStorage; a new tab re-authenticates.
-    userStore: new WebStorageStateStore({ store: window.sessionStorage }),
+    // Persist across tabs and browser restarts; the refresh token keeps it alive.
+    userStore: new WebStorageStateStore({ store: window.localStorage }),
     onSigninCallback: () => {
       // Strip ?code=&state= from the URL after the redirect lands.
       window.history.replaceState({}, document.title, window.location.pathname)

@@ -20,8 +20,10 @@ npm run dev        # http://localhost:5173, proxies /api -> localhost:5073
 The client reads its OIDC settings at startup from `GET /api/config` (served by the API from
 `Oidc:Authority` / `Oidc:ClientId`), so nothing is baked into the bundle. The provider must be a
 **public** client with `<origin>/` registered as a redirect URI (strict match, trailing slash
-included) for every origin the UI is served from. Tokens are kept in `sessionStorage`, so each
-new tab signs in again.
+included) for every origin the UI is served from. The client requests `offline_access` so
+Authentik issues a refresh token; the session is kept in `localStorage` and renewed silently,
+and a browser that has signed in before is sent straight back through Authentik (its own
+session cookie makes that a silent round-trip) rather than shown the login card.
 
 ## Layout
 
