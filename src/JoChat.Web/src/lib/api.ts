@@ -133,6 +133,23 @@ export function createApi(getToken: () => string | undefined) {
     deleteChat: (id: string) => json<void>(`/chats/${id}`, { method: 'DELETE' }),
     messages: (chatId: string) => json<Message[]>(`/chats/${chatId}/messages`),
 
+    generateImage: (body: { prompt: string; chatId?: string; provider?: string; size?: string; quality?: string }) =>
+      json<{ id: string; url: string; mimeType: string; messageId: string | null }>('/images/generate', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+
+    // Returns an object URL for the synthesized audio; caller revokes it.
+    speak: async (body: { text: string; provider: string; voiceId: string; modelId?: string }): Promise<string> => {
+      const res = await fetch('/api/tts/speak', {
+        method: 'POST',
+        headers: headers({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify(body),
+      })
+      await throwIfFailed(res)
+      return URL.createObjectURL(await res.blob())
+    },
+
     uploadAttachment: async (file: File): Promise<{ id: string; mimeType: string }> => {
       const form = new FormData()
       form.append('file', file)

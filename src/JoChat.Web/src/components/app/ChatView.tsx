@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { useParams } from 'react-router'
-import { ImagePlus, SendHorizontal, Square, X } from 'lucide-react'
+import { ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
-import { MessageBubble, type DisplayMessage } from './MessageBubble'
+import { MessageBubble, type DisplayMessage, type TtsDefaults } from './MessageBubble'
 
 interface PendingUpload {
   file: File
@@ -23,8 +23,11 @@ export function ChatView() {
 
 function ChatPane({ chatId }: { chatId: string }) {
   const api = useApi()
-  const { refresh } = useChats()
+  const { chats, refresh } = useChats()
   const [messages, setMessages] = useState<DisplayMessage[]>([])
+  const [tts, setTts] = useState<TtsDefaults | null>(null)
+  const [imageMode, setImageMode] = useState(false)
+  const [imageError, setImageError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [uploads, setUploads] = useState<PendingUpload[]>([])
@@ -53,6 +56,26 @@ function ChatPane({ chatId }: { chatId: string }) {
     bottomRef.current?.scrollIntoView({ block: 'end' })
   }, [messages])
 
+  // Read-aloud uses the persona's configured voice; without one the button stays hidden.
+  const personaId = chats.find((c) => c.id === chatId)?.personaId
+  useEffect(() => {
+    if (!personaId) return
+    let cancelled = false
+    api
+      .personas()
+      .then((list) => {
+        if (cancelled) return
+        const p = list.find((x) => x.id === personaId)
+        setTts(p?.defaultTtsProvider && p.defaultTtsVoiceId ? { provider: p.defaultTtsProvider, voiceId: p.defaultTtsVoiceId } : null)
+      })
+      .catch(() => {
+        if (!cancelled) setTts(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, personaId])
+
   const addFiles = (files: FileList | null) => {
     if (!files) return
     for (const file of Array.from(files)) {
@@ -72,9 +95,27 @@ function ChatPane({ chatId }: { chatId: string }) {
 
   const canSend = !streaming && text.trim().length > 0 && uploads.every((u) => u.id || u.error)
 
+  const generateImage = async () => {
+    const prompt = text.trim()
+    setText('')
+    setStreaming(true)
+    setImageError(null)
+    try {
+      await api.generateImage({ prompt, chatId })
+      await load()
+      void refresh()
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : String(err))
+      setText(prompt)
+    } finally {
+      setStreaming(false)
+    }
+  }
+
   const send = async (e?: FormEvent) => {
     e?.preventDefault()
     if (!canSend) return
+    if (imageMode) return generateImage()
     const attachmentIds = uploads.filter((u) => u.id).map((u) => u.id!)
     const previewUrls = uploads.filter((u) => u.id).map((u) => u.previewUrl)
     const userMsg: DisplayMessage = {
@@ -152,8 +193,11 @@ function ChatPane({ chatId }: { chatId: string }) {
             <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
           )}
           {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+            <MessageBubble key={m.id} message={m} tts={tts} />
           ))}
+          {streaming && imageMode && (
+            <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
+          )}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -182,6 +226,7 @@ function ChatPane({ chatId }: { chatId: string }) {
               ))}
             </div>
           )}
+          {imageError && <p className="text-destructive mb-2 text-sm">{imageError}</p>}
           <div className="bg-background flex items-end gap-2 rounded-xl border p-2 shadow-xs">
             <input
               ref={fileInputRef}
@@ -200,15 +245,27 @@ function ChatPane({ chatId }: { chatId: string }) {
               size="icon"
               aria-label="Attach image"
               onClick={() => fileInputRef.current?.click()}
-              disabled={streaming}
+              disabled={streaming || imageMode}
             >
               <ImagePlus />
+            </Button>
+            <Button
+              type="button"
+              variant={imageMode ? 'secondary' : 'ghost'}
+              size="icon"
+              aria-label="Generate image"
+              aria-pressed={imageMode}
+              title="Generate an image from the prompt instead of chatting"
+              onClick={() => setImageMode((v) => !v)}
+              disabled={streaming}
+            >
+              <Sparkles />
             </Button>
             <Textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Message… (Enter to send, Shift+Enter for newline)"
+              placeholder={imageMode ? 'Describe the image to generate…' : 'Message… (Enter to send, Shift+Enter for newline)'}
               rows={1}
               className="max-h-48 min-h-9 flex-1 resize-none border-0 shadow-none focus-visible:ring-0"
             />
