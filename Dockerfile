@@ -35,14 +35,13 @@ COPY --from=api /out/app ./
 COPY --from=web /out/wwwroot ./wwwroot/
 RUN mkdir -p /app/data && chown -R app:app /app/data
 USER app
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080 \
-    ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
+# Port 8080 comes from the base image (ASPNETCORE_HTTP_PORTS); override that variable to change it.
+ENV ASPNETCORE_FORWARDEDHEADERS_ENABLED=true \
     Database__MigrateOnStartup=true \
     Storage__RootPath=/app/data/files
 VOLUME ["/app/data"]
 EXPOSE 8080
-# Probe whatever address the app binds (first entry of ASPNETCORE_URLS), so overriding the port
-# doesn't silently break the check.
+# Probe whatever port the app binds, so overriding it doesn't silently break the check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -fsS "${ASPNETCORE_URLS%%;*}/healthz" || exit 1
+  CMD curl -fsS "http://localhost:${ASPNETCORE_HTTP_PORTS%%;*}/healthz" || exit 1
 ENTRYPOINT ["dotnet", "JoChat.Api.dll"]

@@ -10,6 +10,7 @@ using JoChat.Infrastructure;
 using JoChat.Infrastructure.Persistence;
 using JoChat.Providers;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using ScimSlim.EntityFramework;
@@ -18,6 +19,12 @@ using ScimSlim.Extensions;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddJoChatInfrastructure(builder.Configuration);
+
+// Nothing uses data protection yet (bearer auth, no cookies), but keeping the key ring next to
+// the uploaded files means a future use survives container restarts instead of silently rotating.
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(
+        builder.Configuration["Storage:RootPath"] ?? "data/files", "..", "keys")));
 builder.Services.AddJoChatProviders(builder.Configuration);
 builder.Services.AddScoped<IChatStreamingService, ChatStreamingService>();
 builder.Services.AddScoped<ImagePromptWriter>();

@@ -67,7 +67,7 @@ its public OIDC settings from `GET /api/config`.
 | `Storage__MaxUploadBytes` | no | Upload cap (default 10 MiB) |
 | `RateLimits__ChatPerMinute` etc. | no | Per-user limits: `ChatPerMinute` 30, `ImagePerMinute` 6, `TtsPerMinute` 30, `UploadPerMinute` 30 |
 | `Database__MigrateOnStartup` | no | Apply migrations at startup (image default `true`) |
-| `ASPNETCORE_URLS` | no | Image default `http://0.0.0.0:8080` |
+| `ASPNETCORE_HTTP_PORTS` | no | Listening port (image default `8080`) |
 
 Without Docker, `dotnet publish src/JoChat.Api -c Release` still produces a single deployable with
 the web client in `wwwroot` (requires Node on the build machine); run migrations with
