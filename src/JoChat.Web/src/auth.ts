@@ -44,9 +44,10 @@ export function oidcConfig({ authority, clientId }: RuntimeConfig): AuthProvider
     automaticSilentRenew: true,
     // Persist across tabs and browser restarts; the refresh token keeps it alive.
     userStore: new WebStorageStateStore({ store: window.localStorage }),
-    onSigninCallback: () => {
-      // Strip ?code=&state= from the URL after the redirect lands.
-      window.history.replaceState({}, document.title, window.location.pathname)
+    onSigninCallback: (user) => {
+      // Strip ?code=&state= from the URL; return to where sign-in started if a path was passed.
+      const target = typeof user?.state === 'string' && user.state.startsWith('/') ? user.state : window.location.pathname
+      window.history.replaceState({}, document.title, target)
     },
   }
 }

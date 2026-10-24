@@ -2,6 +2,7 @@ import { Suspense, lazy, useState, type KeyboardEvent } from 'react'
 import { Check, Download, Globe, Loader2, Pencil, RefreshCw, Search, Square, Terminal, Trash2, Volume2, Wrench, X } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type AttachmentRef, type ToolStep } from '@/lib/api'
+import { useAttachmentResolver } from '@/lib/attachment-source'
 import { play, stop, usePlayer } from '@/lib/tts-player'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
@@ -171,13 +172,13 @@ function formatBytes(n: number): string {
 
 // Files the model produced (code execution output); downloaded through the authenticated API.
 function FileChip({ attachment }: { attachment: AttachmentRef }) {
-  const api = useApi()
+  const resolve = useAttachmentResolver()
   const [busy, setBusy] = useState(false)
   const name = attachment.fileName ?? 'file'
   const download = async () => {
     setBusy(true)
     try {
-      const url = await api.attachmentBlobUrl(attachment.id)
+      const url = await resolve(attachment.id)
       const a = document.createElement('a')
       a.href = url
       a.download = name

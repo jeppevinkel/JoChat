@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type ChatStreamEvent, type ToolStep } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
+import { ChatHeader } from './ChatHeader'
 import { MessageBubble, type DisplayMessage, type MessageActions, type TtsDefaults } from './MessageBubble'
 
 interface PendingUpload {
@@ -117,7 +118,8 @@ function ChatPane({ chatId }: { chatId: string }) {
   }
 
   // Read-aloud uses the persona's configured voice; without one the button stays hidden.
-  const personaId = chats.find((c) => c.id === chatId)?.personaId
+  const summary = chats.find((c) => c.id === chatId)
+  const personaId = summary?.personaId
   useEffect(() => {
     if (!personaId) return
     let cancelled = false
@@ -300,6 +302,7 @@ function ChatPane({ chatId }: { chatId: string }) {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
+      {summary && <ChatHeader chat={summary} />}
       <div className="relative min-h-0 flex-1">
         <div
           ref={scrollRef}

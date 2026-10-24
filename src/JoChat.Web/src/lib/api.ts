@@ -6,7 +6,33 @@ export interface ChatSummary {
   id: string
   title: string
   personaId: string
+  personaName: string
+  personaModelId: string
+  isShared: boolean
   updatedAt: string
+}
+
+export interface ShareInfo {
+  token: string
+  allowAnonymous: boolean
+  createdAt: string
+}
+
+export interface SharedMessage {
+  id: string
+  role: 'User' | 'Assistant'
+  content: string
+  createdAt: string
+  attachments: AttachmentRef[]
+  toolActivity: ToolStep[] | null
+}
+
+export interface SharedChat {
+  title: string
+  allowAnonymous: boolean
+  ownerName: string | null
+  persona: { name: string; description: string | null; modelId: string } | null
+  messages: SharedMessage[]
 }
 
 export interface AttachmentRef {
@@ -186,10 +212,11 @@ async function* streamEvents(
 }
 
 export function createApi(getToken: () => string | undefined) {
-  const headers = (extra: Record<string, string> = {}) => ({
-    Authorization: `Bearer ${getToken() ?? ''}`,
-    ...extra,
-  })
+  // No Authorization header at all when signed out, so anonymous endpoints see a clean request.
+  const headers = (extra: Record<string, string> = {}): Record<string, string> => {
+    const token = getToken()
+    return token ? { Authorization: `Bearer ${token}`, ...extra } : { ...extra }
+  }
   const json = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
     const res = await fetch(`/api${path}`, {
       ...init,
@@ -252,6 +279,25 @@ export function createApi(getToken: () => string | undefined) {
           `/admin/usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
         ),
       users: () => json<AdminUser[]>('/admin/users'),
+    },
+
+    share: {
+      get: (chatId: string) => json<ShareInfo | undefined>(`/chats/${chatId}/share`),
+      set: (chatId: string, allowAnonymous: boolean) =>
+        json<ShareInfo>(`/chats/${chatId}/share`, { method: 'PUT', body: JSON.stringify({ allowAnonymous }) }),
+      revoke: (chatId: string) => json<void>(`/chats/${chatId}/share`, { method: 'DELETE' }),
+      // Viewer side (works signed out when the share allows it).
+      view: (token: string) => json<SharedChat>(`/shares/${encodeURIComponent(token)}`),
+      attachmentBlobUrl: async (token: string, id: string): Promise<string> => {
+        const res = await fetch(`/api/shares/${encodeURIComponent(token)}/attachments/${id}`, { headers: headers() })
+        await throwIfFailed(res)
+        return URL.createObjectURL(await res.blob())
+      },
+      clone: (token: string, personaId?: string) =>
+        json<{ id: string }>(`/shares/${encodeURIComponent(token)}/clone`, {
+          method: 'POST',
+          body: JSON.stringify({ personaId: personaId ?? null }),
+        }),
     },
 
     uploadAttachment: async (file: File): Promise<{ id: string; mimeType: string }> => {
