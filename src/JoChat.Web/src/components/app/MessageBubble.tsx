@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
-import Markdown from 'react-markdown'
-import rehypeHighlight from 'rehype-highlight'
-import remarkGfm from 'remark-gfm'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { Loader2, Square, Volume2 } from 'lucide-react'
 import { useApi, type AttachmentRef } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
+
+const MarkdownContent = lazy(() => import('./MarkdownContent'))
 
 export interface TtsDefaults {
   provider: string
@@ -47,9 +46,9 @@ export function MessageBubble({ message, tts }: { message: DisplayMessage; tts?:
           </div>
         ) : null}
         <div className="prose-chat">
-          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-            {message.content}
-          </Markdown>
+          <Suspense fallback={<p className="whitespace-pre-wrap">{message.content}</p>}>
+            <MarkdownContent>{message.content}</MarkdownContent>
+          </Suspense>
           {message.streaming && !message.content && (
             <span className="text-muted-foreground animate-pulse">Thinking…</span>
           )}
