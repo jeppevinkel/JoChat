@@ -45,7 +45,12 @@ export async function play(messageId: string, load: () => Promise<string>) {
     }
     if (mine !== token) return // superseded while loading
     const el = new Audio(url)
+    el.preload = 'auto'
     audio = el
+    // State follows the element's own events rather than the play() promise.
+    el.onplaying = () => {
+      if (audio === el) emit({ messageId, status: 'playing', error: null })
+    }
     el.onended = () => {
       if (audio === el) stop()
     }
@@ -56,8 +61,12 @@ export async function play(messageId: string, load: () => Promise<string>) {
         emit({ ...state, error: { messageId, message: 'Playback failed.' } })
       }
     }
-    await el.play()
-    if (mine === token) emit({ messageId, status: 'playing', error: null })
+    await el.play().catch((e: unknown) => {
+      // AbortError means the play() request was interrupted (Firefox words it as "fetching
+      // process ... aborted"); playback itself is unaffected, so it isn't surfaced.
+      if (e instanceof DOMException && e.name === 'AbortError') return
+      throw e
+    })
   } catch (e) {
     if (mine !== token) return
     cache.delete(messageId)
