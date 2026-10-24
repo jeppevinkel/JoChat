@@ -22,7 +22,11 @@ public static class ChatEndpoints
             ICurrentUserService current, CancellationToken ct) =>
         {
             var user = await current.GetRequiredUserAsync(ct);
-            // TODO: validate persona exists + ownership/IsShared
+            var personaUsable = await db.Personas
+                .AnyAsync(p => p.Id == req.PersonaId && (p.OwnerId == user.Id || p.IsShared), ct);
+            if (!personaUsable)
+                return Results.Problem("Persona not found.", statusCode: StatusCodes.Status400BadRequest);
+
             var chat = new Core.Entities.Chat
             {
                 Id = Guid.NewGuid(), Title = req.Title ?? "New chat",
@@ -34,11 +38,30 @@ public static class ChatEndpoints
             return Results.Created($"/api/chats/{chat.Id}", new { chat.Id });
         });
 
-        group.MapGet("/chats/{id:guid}/messages",
-            // TODO:
-            // 1. Load chat, verify ownership (404/403 if not owner).
-            // 2. Return ordered Messages (+ attachment refs) for the chat.
-            () => Results.Ok());
+        // Ownership checks below return 404 for both missing and foreign chats so that
+        // chat ids can't be probed for existence.
+        group.MapGet("/chats/{id:guid}/messages", async (Guid id, AppDbContext db,
+            ICurrentUserService current, CancellationToken ct) =>
+        {
+            var user = await current.GetRequiredUserAsync(ct);
+            var owned = await db.Chats.AnyAsync(c => c.Id == id && c.OwnerId == user.Id, ct);
+            if (!owned) return Results.NotFound();
+
+            var messages = await db.Messages
+                .Where(m => m.ChatId == id)
+                .OrderBy(m => m.CreatedAt)
+                .Select(m => new
+                {
+                    m.Id, m.ParentMessageId, Role = m.Role.ToString(), m.Content,
+                    m.TokensIn, m.TokensOut, m.CreatedAt,
+                    Attachments = m.Attachments.Select(a => new
+                    {
+                        a.Id, Kind = a.Kind.ToString(), a.MimeType, a.Width, a.Height,
+                    }).ToList(),
+                })
+                .ToListAsync(ct);
+            return Results.Ok(messages);
+        });
 
         // The core loop: post a user message, stream the assistant reply via SSE.
         group.MapPost("/chats/{id:guid}/messages",
@@ -47,11 +70,25 @@ public static class ChatEndpoints
                     chatService.SendAndStreamAsync(id, req.Text, req.AttachmentIds, ct),
                     eventType: "message"));
 
-        group.MapDelete("/chats/{id:guid}",
-            // TODO:
-            // 1. Load chat, verify ownership (404/403 if not owner).
-            // 2. Delete chat + cascade Messages/attachment links (and orphaned UsageRecords?).
-            () => Results.NoContent());
+        group.MapDelete("/chats/{id:guid}", async (Guid id, AppDbContext db,
+            ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
+        {
+            var user = await current.GetRequiredUserAsync(ct);
+            var chat = await db.Chats.FirstOrDefaultAsync(c => c.Id == id && c.OwnerId == user.Id, ct);
+            if (chat is null) return Results.NotFound();
+
+            // Messages cascade, but attachments only get their FK nulled — remove them explicitly
+            // along with their files so nothing is left orphaned on disk.
+            var attachments = await db.Attachments
+                .Where(a => a.Message!.ChatId == id)
+                .ToListAsync(ct);
+            foreach (var a in attachments)
+                await storage.DeleteAsync(a.StoragePath, ct);
+            db.Attachments.RemoveRange(attachments);
+            db.Chats.Remove(chat);
+            await db.SaveChangesAsync(ct);
+            return Results.NoContent();
+        });
         return group;
     }
 }
