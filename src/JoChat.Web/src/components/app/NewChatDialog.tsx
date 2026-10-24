@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { useApi, type ModelDefinition, type Persona, type PersonaRequest } from '@/lib/api'
+import { guardedClose } from '@/lib/guarded-close'
 import { useChats } from '@/lib/use-chats'
 import { emptyPersona, isValidPersona, selectClass } from '@/lib/persona'
 import { PersonaForm } from './PersonaForm'
@@ -76,8 +77,11 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     }
   }
 
+  // Only the inline persona form holds anything worth protecting.
+  const isDirty = () => draft !== null && JSON.stringify(draft) !== JSON.stringify(emptyPersona(models))
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={guardedClose(isDirty, onOpenChange)} disablePointerDismissal={draft !== null}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New chat</DialogTitle>

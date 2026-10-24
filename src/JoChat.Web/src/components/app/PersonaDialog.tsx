@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog'
 import { useApi, type ModelDefinition, type Persona, type PersonaRequest } from '@/lib/api'
 import { emptyPersona, isValidPersona, toRequest } from '@/lib/persona'
+import { guardedClose } from '@/lib/guarded-close'
 import { PersonaForm } from './PersonaForm'
 
 interface Props {
@@ -23,6 +24,7 @@ export function PersonaDialog({ open, onOpenChange, persona, onSaved }: Props) {
   const api = useApi()
   const [models, setModels] = useState<ModelDefinition[]>([])
   const [value, setValue] = useState<PersonaRequest | null>(null)
+  const [initial, setInitial] = useState<PersonaRequest | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,7 +36,9 @@ export function PersonaDialog({ open, onOpenChange, persona, onSaved }: Props) {
       .then((m) => {
         if (cancelled) return
         setModels(m)
-        setValue(persona ? toRequest(persona) : emptyPersona(m))
+        const start = persona ? toRequest(persona) : emptyPersona(m)
+        setValue(start)
+        setInitial(start)
         setError(null)
       })
       .catch((e) => {
@@ -60,8 +64,10 @@ export function PersonaDialog({ open, onOpenChange, persona, onSaved }: Props) {
     }
   }
 
+  const isDirty = () => value !== null && initial !== null && JSON.stringify(value) !== JSON.stringify(initial)
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={guardedClose(isDirty, onOpenChange)} disablePointerDismissal>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{persona ? 'Edit persona' : 'New persona'}</DialogTitle>

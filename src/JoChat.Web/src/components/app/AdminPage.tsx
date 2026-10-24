@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +12,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError, useApi, type AdminModel, type AdminUser, type ModelDefinitionRequest, type UsageRow } from '@/lib/api'
+import { guardedClose } from '@/lib/guarded-close'
 import { selectClass } from '@/lib/persona'
 import { cn } from '@/lib/utils'
 
@@ -142,19 +143,25 @@ function ModelsTab() {
 }
 
 function ModelDialog({ open, onOpenChange, model, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; model: AdminModel | null; onSaved: () => void }) {
+  const dirtyRef = useRef(false)
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={guardedClose(() => dirtyRef.current, onOpenChange)} disablePointerDismissal>
       {/* Keyed so each opening starts from the given model's values via the state initialiser. */}
-      {open && <ModelForm key={model?.id ?? 'new'} model={model} onSaved={onSaved} onOpenChange={onOpenChange} />}
+      {open && <ModelForm key={model?.id ?? 'new'} model={model} onSaved={onSaved} onOpenChange={onOpenChange} dirtyRef={dirtyRef} />}
     </Dialog>
   )
 }
 
-function ModelForm({ model, onSaved, onOpenChange }: { model: AdminModel | null; onSaved: () => void; onOpenChange: (o: boolean) => void }) {
+function ModelForm({ model, onSaved, onOpenChange, dirtyRef }: { model: AdminModel | null; onSaved: () => void; onOpenChange: (o: boolean) => void; dirtyRef: React.MutableRefObject<boolean> }) {
   const api = useApi()
-  const [value, setValue] = useState<ModelDefinitionRequest>(() =>
-    model ? { provider: model.provider, modelId: model.modelId, displayName: model.displayName, supportsVision: model.supportsVision, isEnabled: model.isEnabled } : emptyModel,
+  const initial = useMemo<ModelDefinitionRequest>(
+    () => (model ? { provider: model.provider, modelId: model.modelId, displayName: model.displayName, supportsVision: model.supportsVision, isEnabled: model.isEnabled } : emptyModel),
+    [model],
   )
+  const [value, setValue] = useState<ModelDefinitionRequest>(initial)
+  useEffect(() => {
+    dirtyRef.current = JSON.stringify(value) !== JSON.stringify(initial)
+  }, [value, initial, dirtyRef])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
