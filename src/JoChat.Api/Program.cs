@@ -1,3 +1,5 @@
+using System.Threading.RateLimiting;
+using JoChat.Api;
 using JoChat.Api.Auth;
 using JoChat.Api.Endpoints;
 using JoChat.Api.Services;
@@ -54,7 +56,24 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
     .WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [])
     .AllowAnyHeader().AllowAnyMethod()));
 
-builder.Services.AddRateLimiter(o => { /* TODO: partition by sub on expensive endpoints */ });
+// Per-user limits on the endpoints that call paid providers; keyed by the OIDC sub so one
+// user can't exhaust another's quota, with the client IP as fallback for anonymous requests.
+builder.Services.Configure<RateLimitOptions>(builder.Configuration.GetSection(RateLimitOptions.Section));
+var rateLimits = builder.Configuration.GetSection(RateLimitOptions.Section).Get<RateLimitOptions>() ?? new();
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = (ctx, _) =>
+    {
+        if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+            ctx.HttpContext.Response.Headers.RetryAfter = ((int)retryAfter.TotalSeconds).ToString();
+        return ValueTask.CompletedTask;
+    };
+    o.AddPolicy(RatePolicies.Chat, ctx => PerUser(ctx, rateLimits.ChatPerMinute));
+    o.AddPolicy(RatePolicies.Image, ctx => PerUser(ctx, rateLimits.ImagePerMinute));
+    o.AddPolicy(RatePolicies.Tts, ctx => PerUser(ctx, rateLimits.TtsPerMinute));
+    o.AddPolicy(RatePolicies.Upload, ctx => PerUser(ctx, rateLimits.UploadPerMinute));
+});
 builder.Services.AddOpenApi();
 
 var app = builder.Build();
@@ -119,3 +138,17 @@ app.MapGroup("/api/admin").RequireAuthorization(Policies.SuperAdmin)
     .MapAdminEndpoints(); // empty for now
 
 app.Run();
+
+static RateLimitPartition<string> PerUser(HttpContext ctx, int perMinute)
+{
+    var key = ctx.User.FindFirst("sub")?.Value
+              ?? ctx.Connection.RemoteIpAddress?.ToString()
+              ?? "anonymous";
+    return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new SlidingWindowRateLimiterOptions
+    {
+        PermitLimit = perMinute,
+        Window = TimeSpan.FromMinutes(1),
+        SegmentsPerWindow = 6,
+        QueueLimit = 0,
+    });
+}

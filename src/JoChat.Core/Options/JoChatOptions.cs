@@ -41,3 +41,12 @@ public class StorageOptions
     public string RootPath { get; set; } = "data/files";
     public long MaxUploadBytes { get; set; } = 10 * 1024 * 1024;
 }
+/// <summary>Per-user sliding-window limits (requests per minute) on the endpoints that spend money.</summary>
+public class RateLimitOptions
+{
+    public const string Section = "RateLimits";
+    public int ChatPerMinute { get; set; } = 30;
+    public int ImagePerMinute { get; set; } = 6;
+    public int TtsPerMinute { get; set; } = 30;
+    public int UploadPerMinute { get; set; } = 30;
+}

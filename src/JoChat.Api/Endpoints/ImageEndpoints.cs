@@ -4,6 +4,7 @@ using JoChat.Core.Entities;
 using JoChat.Core.Enums;
 using JoChat.Core.Models;
 using JoChat.Infrastructure.Persistence;
+using JoChat.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace JoChat.Api.Endpoints;
@@ -63,6 +64,7 @@ public static class ImageEndpoints
             await using var ms = new MemoryStream(image.Data.ToArray());
             var path = await storage.SaveAsync(ms, image.MimeType, ct);
 
+            var dimensions = ImageDimensions.TryRead(image.Data.Span);
             var attachment = new Attachment
             {
                 Id = Guid.NewGuid(),
@@ -71,6 +73,8 @@ public static class ImageEndpoints
                 StoragePath = path,
                 MimeType = image.MimeType,
                 SizeBytes = image.Data.Length,
+                Width = dimensions?.Width,
+                Height = dimensions?.Height,
                 CreatedAt = DateTime.UtcNow,
             };
             db.Attachments.Add(attachment);
@@ -125,7 +129,7 @@ public static class ImageEndpoints
 
             return Results.Created($"/api/attachments/{attachment.Id}",
                 new { attachment.Id, Url = $"/api/attachments/{attachment.Id}", attachment.MimeType, MessageId = messageId, Prompt = imagePrompt });
-        });
+        }).RequireRateLimiting(RatePolicies.Image);
         return group;
     }
 }

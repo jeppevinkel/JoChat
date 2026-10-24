@@ -113,7 +113,7 @@ public static class TtsEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.File(audio, result.MimeType);
-        });
+        }).RequireRateLimiting(RatePolicies.Tts);
         return group;
     }
 }

@@ -3,6 +3,7 @@ using JoChat.Core.Entities;
 using JoChat.Core.Enums;
 using JoChat.Core.Options;
 using JoChat.Infrastructure.Persistence;
+using JoChat.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -27,6 +28,12 @@ public static class AttachmentEndpoints
                 return Results.Problem($"File must be between 1 byte and {storageOptions.Value.MaxUploadBytes} bytes.",
                     statusCode: StatusCodes.Status413PayloadTooLarge);
 
+            (int Width, int Height)? dimensions;
+            await using (var probe = file.OpenReadStream())
+                dimensions = await ImageDimensions.TryReadAsync(probe, ct);
+            if (dimensions is null)
+                return Results.Problem("File is not a recognisable image.", statusCode: StatusCodes.Status415UnsupportedMediaType);
+
             await using var stream = file.OpenReadStream();
             var path = await storage.SaveAsync(stream, file.ContentType.ToLowerInvariant(), ct);
 
@@ -38,13 +45,16 @@ public static class AttachmentEndpoints
                 StoragePath = path,
                 MimeType = file.ContentType.ToLowerInvariant(),
                 SizeBytes = file.Length,
+                Width = dimensions.Value.Width,
+                Height = dimensions.Value.Height,
                 CreatedAt = DateTime.UtcNow,
             };
             db.Attachments.Add(attachment);
             await db.SaveChangesAsync(ct);
             return Results.Created($"/api/attachments/{attachment.Id}",
                 new { attachment.Id, attachment.MimeType, attachment.SizeBytes });
-        }).DisableAntiforgery(); // bearer-token API; no cookie session to forge
+        }).DisableAntiforgery() // bearer-token API; no cookie session to forge
+          .RequireRateLimiting(RatePolicies.Upload);
 
         group.MapGet("/attachments/{id:guid}", async (Guid id, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>

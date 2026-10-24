@@ -72,7 +72,8 @@ public static class ChatEndpoints
             (Guid id, SendMessageRequest req, IChatStreamingService chatService, CancellationToken ct)
                 => TypedResults.ServerSentEvents(
                     chatService.SendAndStreamAsync(id, req.Text, req.AttachmentIds, ct)
-                        .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))));
+                        .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))))
+            .RequireRateLimiting(RatePolicies.Chat);
 
         group.MapDelete("/chats/{id:guid}", async (Guid id, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
