@@ -15,6 +15,13 @@ public interface IChatStreamingService
     IAsyncEnumerable<ChatStreamEvent> SendAndStreamAsync(
         Guid chatId, string text, List<Guid>? attachmentIds, CancellationToken ct);
 
+    /// <summary>
+    /// Creates a chat together with its first user message and streams the reply. Chats only come
+    /// into existence this way (or with a first generated image), so there are never empty ones.
+    /// </summary>
+    IAsyncEnumerable<ChatStreamEvent> StartAndStreamAsync(
+        Guid personaId, string text, List<Guid>? attachmentIds, CancellationToken ct);
+
     /// <summary>Discards an assistant message and everything after it, then streams a new reply in its place.</summary>
     IAsyncEnumerable<ChatStreamEvent> RegenerateAsync(Guid chatId, Guid messageId, CancellationToken ct);
 }
@@ -50,6 +57,51 @@ public class ChatStreamingService(
             yield break;
         }
 
+        var userMessage = await AddUserMessageAsync(chat, user, text, attachmentIds, ct);
+
+        await foreach (var evt in StreamReplyAsync(chat, provider, user, userMessage, ct))
+            yield return evt;
+    }
+
+    public async IAsyncEnumerable<ChatStreamEvent> StartAndStreamAsync(
+        Guid personaId, string text, List<Guid>? attachmentIds,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var user = await current.GetRequiredUserAsync(ct);
+        var persona = await db.Personas
+            .FirstOrDefaultAsync(p => p.Id == personaId && (p.OwnerId == user.Id || p.IsShared), ct);
+        if (persona is null)
+        {
+            yield return new ChatStreamEvent.Error("Persona not found.");
+            yield break;
+        }
+
+        var provider = services.GetKeyedService<IChatCompletionProvider>(persona.Provider);
+        if (provider is null)
+        {
+            yield return new ChatStreamEvent.Error($"Unknown chat provider '{persona.Provider}'.");
+            yield break;
+        }
+
+        // Saved in the same SaveChanges as the first message, so the chat never exists without it.
+        var now = DateTime.UtcNow;
+        var chat = new Chat
+        {
+            Id = Guid.NewGuid(), Title = ChatTitles.Default, PersonaId = persona.Id, Persona = persona,
+            OwnerId = user.Id, CreatedAt = now, UpdatedAt = now,
+        };
+        db.Chats.Add(chat);
+        var userMessage = await AddUserMessageAsync(chat, user, text, attachmentIds, ct);
+        yield return new ChatStreamEvent.ChatCreated(chat.Id);
+
+        await foreach (var evt in StreamReplyAsync(chat, provider, user, userMessage, ct))
+            yield return evt;
+    }
+
+    /// <summary>Saves a user turn (with the caller's pending uploads) and names the chat after its first message.</summary>
+    private async Task<Message> AddUserMessageAsync(
+        Chat chat, UserProfile user, string text, List<Guid>? attachmentIds, CancellationToken ct)
+    {
         // Only the caller's own, not-yet-attached uploads may be linked to the new message.
         var attachments = attachmentIds is { Count: > 0 }
             ? await db.Attachments
@@ -75,8 +127,7 @@ public class ChatStreamingService(
         chat.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        await foreach (var evt in StreamReplyAsync(chat, provider, user, userMessage, ct))
-            yield return evt;
+        return userMessage;
     }
 
     public async IAsyncEnumerable<ChatStreamEvent> RegenerateAsync(

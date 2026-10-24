@@ -1,12 +1,9 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog'
-import { useApi } from '@/lib/api'
-import { useChats } from '@/lib/use-chats'
-import { useDefaultPersona } from '@/lib/use-me'
+import { DRAFT_PATH, newDraftState } from '@/lib/draft'
 import { DESKTOP_QUERY, useMediaQuery } from '@/lib/use-media-query'
 import { ShellContext, type Shell } from '@/lib/use-shell'
-import { NewChatDialog } from './NewChatDialog'
 import { Sidebar } from './Sidebar'
 
 const COLLAPSED_KEY = 'jochat:sidebar-collapsed'
@@ -17,34 +14,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isDesktop = useMediaQuery(DESKTOP_QUERY)
   const [collapsed, setCollapsedState] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1')
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [newChatOpen, setNewChatOpen] = useState(false)
-  const api = useApi()
   const navigate = useNavigate()
-  const { refresh } = useChats()
-  const { defaultPersonaId } = useDefaultPersona()
-  // Guards against a double click creating two chats; click updates flush before the next click.
-  const [starting, setStarting] = useState(false)
 
   // Widening the window past the breakpoint retires the drawer, so it doesn't pop back open later.
   if (isDesktop && drawerOpen) setDrawerOpen(false)
-
-  // With a default persona a new chat starts straight away (its persona can still be changed
-  // before the first message); without one, or if it can't be used, the picker dialog opens.
-  const startNewChat = useCallback(async () => {
-    setDrawerOpen(false)
-    if (!defaultPersonaId) return setNewChatOpen(true)
-    if (starting) return
-    setStarting(true)
-    try {
-      const { id } = await api.createChat(defaultPersonaId)
-      await refresh()
-      navigate(`/chats/${id}`)
-    } catch {
-      setNewChatOpen(true)
-    } finally {
-      setStarting(false)
-    }
-  }, [defaultPersonaId, starting, api, refresh, navigate])
 
   const shell = useMemo<Shell>(() => {
     const setCollapsed = (v: boolean) => {
@@ -56,10 +29,14 @@ export function AppShell({ children }: { children: ReactNode }) {
       isDesktop,
       sidebarInline: isDesktop && !collapsed,
       openSidebar: () => (isDesktop ? setCollapsed(false) : setDrawerOpen(true)),
-      newChat: () => void startNewChat(),
+      // A draft: nothing is created on the server until its first message is sent.
+      newChat: () => {
+        setDrawerOpen(false)
+        navigate(DRAFT_PATH, { state: newDraftState() })
+      },
       hideSidebar: () => (isDesktop ? setCollapsed(true) : setDrawerOpen(false)),
     }
-  }, [isDesktop, collapsed, startNewChat])
+  }, [isDesktop, collapsed, navigate])
 
   const sidebar = (
     <Sidebar
@@ -87,7 +64,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         )}
         <main className="flex min-w-0 flex-1 flex-col">{children}</main>
       </div>
-      <NewChatDialog open={newChatOpen} onOpenChange={setNewChatOpen} />
     </ShellContext.Provider>
   )
 }
