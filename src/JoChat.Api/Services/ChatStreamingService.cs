@@ -74,23 +74,7 @@ public class ChatStreamingService(
         chat.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var history = new List<ChatRequestMessage>(chat.Messages.Count);
-        foreach (var m in chat.Messages)
-        {
-            if (m.Role == MessageRole.Assistant)
-            {
-                history.Add(new ChatRequestMessage(m.Role, m.Content));
-                // The API only accepts image blocks on user turns, so an image the assistant
-                // generated is shown back to it as a follow-up user turn.
-                var generated = await LoadImagesAsync(m, AttachmentKind.GeneratedImage, ct);
-                if (generated is not null)
-                    history.Add(new ChatRequestMessage(MessageRole.User, "(This is the image you generated.)", generated));
-            }
-            else
-            {
-                history.Add(new ChatRequestMessage(m.Role, m.Content, await LoadImagesAsync(m, AttachmentKind.UploadedImage, ct)));
-            }
-        }
+        var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
 
         var request = new ChatRequest(
             persona.ModelId, persona.SystemPrompt, history, persona.Temperature, persona.MaxTokens);
@@ -162,22 +146,5 @@ public class ChatStreamingService(
         {
             logger.LogError(ex, "Failed to persist assistant reply for chat {ChatId}", chat.Id);
         }
-    }
-
-    private async Task<IReadOnlyList<ChatRequestImage>?> LoadImagesAsync(
-        Message m, AttachmentKind kind, CancellationToken ct)
-    {
-        var images = m.Attachments.Where(a => a.Kind == kind).ToList();
-        if (images.Count == 0) return null;
-
-        var result = new List<ChatRequestImage>(images.Count);
-        foreach (var a in images)
-        {
-            await using var stream = await storage.OpenReadAsync(a.StoragePath, ct);
-            using var buffer = new MemoryStream();
-            await stream.CopyToAsync(buffer, ct);
-            result.Add(new ChatRequestImage(a.MimeType, buffer.ToArray()));
-        }
-        return result;
     }
 }

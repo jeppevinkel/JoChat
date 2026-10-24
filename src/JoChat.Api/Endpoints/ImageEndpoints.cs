@@ -14,7 +14,7 @@ public static class ImageEndpoints
     {
         group.MapPost("/images/generate", async (GenerateImageRequest req, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, IServiceProvider services,
-            ILogger<GenerateImageRequest> logger, CancellationToken ct) =>
+            ImagePromptWriter promptWriter, ILogger<GenerateImageRequest> logger, CancellationToken ct) =>
         {
             if (string.IsNullOrWhiteSpace(req.Prompt))
                 return Results.Problem("Prompt is required.", statusCode: StatusCodes.Status400BadRequest);
@@ -24,10 +24,23 @@ public static class ImageEndpoints
             // When generated from inside a chat the image is recorded as a turn, so it survives
             // reloads and later model turns can see that an image was produced.
             Chat? chat = null;
+            var imagePrompt = req.Prompt;
+            ImagePromptWriter.Result? written = null;
             if (req.ChatId is { } chatId)
             {
-                chat = await db.Chats.FirstOrDefaultAsync(c => c.Id == chatId && c.OwnerId == user.Id, ct);
-                if (chat is null) return Results.NotFound();
+                chat = await db.Chats
+                    .Include(c => c.Persona)
+                    .Include(c => c.Messages.OrderBy(m => m.CreatedAt))
+                        .ThenInclude(m => m.Attachments)
+                    .AsSplitQuery()
+                    .FirstOrDefaultAsync(c => c.Id == chatId && c.OwnerId == user.Id, ct);
+                if (chat?.Persona is null) return Results.NotFound();
+
+                // Let the persona rewrite the request with the conversation as context; on any
+                // failure the raw request is used so image generation still works.
+                var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
+                written = await promptWriter.WriteAsync(chat.Persona, history, req.Prompt, ct);
+                if (written is not null) imagePrompt = written.Prompt;
             }
 
             var providerId = req.Provider ?? "openai";
@@ -39,7 +52,7 @@ public static class ImageEndpoints
             GeneratedImage image;
             try
             {
-                image = await provider.GenerateAsync(new ImageGenRequest(req.Prompt, req.Size, req.Quality), ct);
+                image = await provider.GenerateAsync(new ImageGenRequest(imagePrompt, req.Size, req.Quality), ct);
             }
             catch (HttpRequestException ex)
             {
@@ -74,7 +87,12 @@ public static class ImageEndpoints
                 var reply = new Message
                 {
                     Id = Guid.NewGuid(), ChatId = chat.Id, Role = MessageRole.Assistant,
-                    ParentMessageId = prompt.Id, Content = $"Generated an image for: {req.Prompt}",
+                    ParentMessageId = prompt.Id,
+                    // Keep the prompt actually used visible (and in the model's history).
+                    Content = written is null
+                        ? $"Generated an image for: {req.Prompt}"
+                        : $"Generated an image.\n\n> {written.Prompt.ReplaceLineEndings("\n> ")}",
+                    TokensIn = written?.TokensIn, TokensOut = written?.TokensOut,
                     CreatedAt = now.AddMilliseconds(1), // keep ordering stable within the same tick
                 };
                 attachment.MessageId = reply.Id;
@@ -84,6 +102,15 @@ public static class ImageEndpoints
                 messageId = reply.Id;
             }
 
+            if (written is not null && chat?.Persona is { } persona)
+            {
+                db.UsageRecords.Add(new UsageRecord
+                {
+                    Id = Guid.NewGuid(), UserId = user.Id, Provider = persona.Provider,
+                    ModelOrVoiceId = persona.ModelId, Kind = "chat",
+                    TokensIn = written.TokensIn, TokensOut = written.TokensOut, CreatedAt = DateTime.UtcNow,
+                });
+            }
             db.UsageRecords.Add(new UsageRecord
             {
                 Id = Guid.NewGuid(),
@@ -97,7 +124,7 @@ public static class ImageEndpoints
             await db.SaveChangesAsync(ct);
 
             return Results.Created($"/api/attachments/{attachment.Id}",
-                new { attachment.Id, Url = $"/api/attachments/{attachment.Id}", attachment.MimeType, MessageId = messageId });
+                new { attachment.Id, Url = $"/api/attachments/{attachment.Id}", attachment.MimeType, MessageId = messageId, Prompt = imagePrompt });
         });
         return group;
     }

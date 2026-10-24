@@ -18,6 +18,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddJoChatInfrastructure(builder.Configuration);
 builder.Services.AddJoChatProviders(builder.Configuration);
 builder.Services.AddScoped<IChatStreamingService, ChatStreamingService>();
+builder.Services.AddScoped<ImagePromptWriter>();
 
 // SCIM provisioning (Authentik -> JoChat)
 builder.Services.AddScim<EfScimUserStore, EfScimGroupStore>(opts =>
