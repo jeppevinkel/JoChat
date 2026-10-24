@@ -2,6 +2,7 @@ using System.Net.ServerSentEvents;
 using JoChat.Api.Services;
 using JoChat.Core.Models;
 using JoChat.Core.Abstractions;
+using JoChat.Core.Enums;
 using JoChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -75,6 +76,54 @@ public static class ChatEndpoints
                         .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))))
             .RequireRateLimiting(RatePolicies.Chat);
 
+        // Edit a message in place (either role). Cached read-aloud audio is dropped since the
+        // text it was made from has changed.
+        group.MapPut("/chats/{id:guid}/messages/{messageId:guid}", async (Guid id, Guid messageId,
+            EditMessageRequest req, AppDbContext db, ICurrentUserService current, IFileStorage storage,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Content))
+                return Results.Problem("Content is required.", statusCode: StatusCodes.Status400BadRequest);
+
+            var user = await current.GetRequiredUserAsync(ct);
+            var message = await db.Messages
+                .Include(m => m.Attachments)
+                .FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == id && m.Chat!.OwnerId == user.Id, ct);
+            if (message is null) return Results.NotFound();
+
+            message.Content = req.Content;
+            var audio = message.Attachments.Where(a => a.Kind == AttachmentKind.TtsAudio).ToList();
+            db.Attachments.RemoveRange(audio);
+            await db.SaveChangesAsync(ct);
+            foreach (var a in audio) await storage.DeleteAsync(a.StoragePath, ct);
+            return Results.Ok(new { message.Id, message.Content });
+        });
+
+        group.MapDelete("/chats/{id:guid}/messages/{messageId:guid}", async (Guid id, Guid messageId,
+            AppDbContext db, ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
+        {
+            var user = await current.GetRequiredUserAsync(ct);
+            var message = await db.Messages
+                .Include(m => m.Attachments)
+                .FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == id && m.Chat!.OwnerId == user.Id, ct);
+            if (message is null) return Results.NotFound();
+
+            var files = message.Attachments.Select(a => a.StoragePath).ToList();
+            db.Attachments.RemoveRange(message.Attachments);
+            db.Messages.Remove(message);
+            await db.SaveChangesAsync(ct);
+            foreach (var path in files) await storage.DeleteAsync(path, ct);
+            return Results.NoContent();
+        });
+
+        // Replace an assistant reply (and anything after it) with a freshly streamed one.
+        group.MapPost("/chats/{id:guid}/messages/{messageId:guid}/regenerate",
+            (Guid id, Guid messageId, IChatStreamingService chatService, CancellationToken ct)
+                => TypedResults.ServerSentEvents(
+                    chatService.RegenerateAsync(id, messageId, ct)
+                        .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))))
+            .RequireRateLimiting(RatePolicies.Chat);
+
         group.MapDelete("/chats/{id:guid}", async (Guid id, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
         {
@@ -108,3 +157,4 @@ public static class ChatEndpoints
 
 public record CreateChatRequest(Guid PersonaId, string? Title);
 public record SendMessageRequest(string Text, List<Guid>? AttachmentIds);
+public record EditMessageRequest(string Content);

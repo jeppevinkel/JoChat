@@ -10,8 +10,12 @@ namespace JoChat.Api.Services;
 
 public interface IChatStreamingService
 {
+    /// <summary>Persists a user message and streams the assistant reply.</summary>
     IAsyncEnumerable<ChatStreamEvent> SendAndStreamAsync(
         Guid chatId, string text, List<Guid>? attachmentIds, CancellationToken ct);
+
+    /// <summary>Discards an assistant message and everything after it, then streams a new reply in its place.</summary>
+    IAsyncEnumerable<ChatStreamEvent> RegenerateAsync(Guid chatId, Guid messageId, CancellationToken ct);
 }
 
 public class ChatStreamingService(
@@ -29,23 +33,17 @@ public class ChatStreamingService(
 
         // The SSE response has already started by the time we run, so failures are
         // reported as Error events rather than HTTP status codes.
-        var chat = await db.Chats
-            .Include(c => c.Persona)
-            .Include(c => c.Messages.OrderBy(m => m.CreatedAt))
-                .ThenInclude(m => m.Attachments)
-            .AsSplitQuery() // two collection includes; avoids a cartesian product over attachments
-            .FirstOrDefaultAsync(c => c.Id == chatId && c.OwnerId == user.Id, ct);
+        var chat = await LoadChatAsync(chatId, user, ct);
         if (chat?.Persona is null)
         {
             yield return new ChatStreamEvent.Error("Chat not found.");
             yield break;
         }
-        var persona = chat.Persona;
 
-        var provider = services.GetKeyedService<IChatCompletionProvider>(persona.Provider);
+        var provider = services.GetKeyedService<IChatCompletionProvider>(chat.Persona.Provider);
         if (provider is null)
         {
-            yield return new ChatStreamEvent.Error($"Unknown chat provider '{persona.Provider}'.");
+            yield return new ChatStreamEvent.Error($"Unknown chat provider '{chat.Persona.Provider}'.");
             yield break;
         }
 
@@ -74,8 +72,59 @@ public class ChatStreamingService(
         chat.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
+        await foreach (var evt in StreamReplyAsync(chat, provider, user, userMessage, ct))
+            yield return evt;
+    }
 
+    public async IAsyncEnumerable<ChatStreamEvent> RegenerateAsync(
+        Guid chatId, Guid messageId, [EnumeratorCancellation] CancellationToken ct)
+    {
+        var user = await current.GetRequiredUserAsync(ct);
+        var chat = await LoadChatAsync(chatId, user, ct);
+        var target = chat?.Messages.FirstOrDefault(m => m.Id == messageId);
+        if (chat?.Persona is null || target is null || target.Role != MessageRole.Assistant)
+        {
+            yield return new ChatStreamEvent.Error("Message not found.");
+            yield break;
+        }
+
+        var provider = services.GetKeyedService<IChatCompletionProvider>(chat.Persona.Provider);
+        if (provider is null)
+        {
+            yield return new ChatStreamEvent.Error($"Unknown chat provider '{chat.Persona.Provider}'.");
+            yield break;
+        }
+
+        // Everything from the target onwards is replaced; later turns would no longer make sense.
+        var removed = chat.Messages.Where(m => m.CreatedAt >= target.CreatedAt || m.Id == target.Id).ToList();
+        var files = removed.SelectMany(m => m.Attachments).Select(a => a.StoragePath).ToList();
+        db.Attachments.RemoveRange(removed.SelectMany(m => m.Attachments));
+        db.Messages.RemoveRange(removed);
+        foreach (var m in removed) chat.Messages.Remove(m);
+        await db.SaveChangesAsync(ct);
+        foreach (var path in files)
+            await storage.DeleteAsync(path, ct);
+
+        var parent = chat.Messages.LastOrDefault(m => m.Role == MessageRole.User);
+        await foreach (var evt in StreamReplyAsync(chat, provider, user, parent, ct))
+            yield return evt;
+    }
+
+    private Task<Chat?> LoadChatAsync(Guid chatId, UserProfile user, CancellationToken ct) =>
+        db.Chats
+            .Include(c => c.Persona)
+            .Include(c => c.Messages.OrderBy(m => m.CreatedAt))
+                .ThenInclude(m => m.Attachments)
+            .AsSplitQuery() // two collection includes; avoids a cartesian product over attachments
+            .FirstOrDefaultAsync(c => c.Id == chatId && c.OwnerId == user.Id, ct);
+
+    /// <summary>Streams a reply to the chat's current history and persists it (even partially) when done.</summary>
+    private async IAsyncEnumerable<ChatStreamEvent> StreamReplyAsync(
+        Chat chat, IChatCompletionProvider provider, UserProfile user, Message? parent,
+        [EnumeratorCancellation] CancellationToken ct)
+    {
+        var persona = chat.Persona!;
+        var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
         var request = new ChatRequest(
             persona.ModelId, persona.SystemPrompt, history, persona.Temperature, persona.MaxTokens);
 
@@ -102,19 +151,19 @@ public class ChatStreamingService(
             // Persist whatever the model produced even if the client disconnected mid-stream,
             // so the conversation history stays consistent with what was billed.
             if (completed is not null || reply.Length > 0)
-                await PersistReplyAsync(chat, user, persona, userMessage, reply.ToString(), completed);
+                await PersistReplyAsync(chat, user, persona, parent, reply.ToString(), completed);
         }
     }
 
     private async Task PersistReplyAsync(
-        Chat chat, UserProfile user, Persona persona, Message userMessage,
+        Chat chat, UserProfile user, Persona persona, Message? parent,
         string content, ChatStreamEvent.Completed? completed)
     {
         db.Messages.Add(new Message
         {
             Id = Guid.NewGuid(),
             ChatId = chat.Id,
-            ParentMessageId = userMessage.Id,
+            ParentMessageId = parent?.Id,
             Role = MessageRole.Assistant,
             Content = content,
             TokensIn = completed?.TokensIn,
