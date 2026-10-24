@@ -5,8 +5,7 @@ using ScimSlim.EntityFramework.Entities;
 
 namespace JoChat.Infrastructure.Persistence;
 
-// Two provider-specific migration sets live under Migrations/Sqlite and Migrations/MySql
-// (see AppDbContextFactory) — regenerate both when the model below changes.
+// PostgreSQL only; migrations live under Migrations/Postgres (see AppDbContextFactory).
 public class AppDbContext(DbContextOptions<AppDbContext> options)
     : DbContext(options), IScimDbContext
 {
@@ -63,12 +62,5 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         b.Entity<UsageRecord>(e =>
             e.HasIndex(x => new { x.UserId, x.CreatedAt }));
-
-        // LONGTEXT is MySQL-specific; SQLite has no equivalent and defaults to TEXT for string columns.
-        if (Database.IsMySql())
-        {
-            b.Entity<Persona>().Property(x => x.SystemPrompt).HasColumnType("LONGTEXT");
-            b.Entity<Message>().Property(x => x.Content).HasColumnType("LONGTEXT");
-        }
     }
 }

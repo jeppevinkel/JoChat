@@ -10,6 +10,7 @@ namespace JoChat.Infrastructure.Identity;
 public class CurrentUserService(IHttpContextAccessor httpContextAccessor, AppDbContext db)
     : ICurrentUserService
 {
+    private static readonly TimeSpan LastSeenResolution = TimeSpan.FromMinutes(5);
     private UserProfile? _cached;
 
     public async Task<UserProfile> GetRequiredUserAsync(CancellationToken ct = default)
@@ -38,6 +39,14 @@ public class CurrentUserService(IHttpContextAccessor httpContextAccessor, AppDbC
                 CreatedAt = DateTime.UtcNow,
             };
             db.UserProfiles.Add(profile);
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Coarse "last seen" without a write per request.
+        var now = DateTime.UtcNow;
+        if (profile.LastSeenAt is null || now - profile.LastSeenAt.Value > LastSeenResolution)
+        {
+            profile.LastSeenAt = now;
             await db.SaveChangesAsync(ct);
         }
 

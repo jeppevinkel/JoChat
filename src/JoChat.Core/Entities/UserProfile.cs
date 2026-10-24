@@ -10,4 +10,6 @@ public class UserProfile
     public string? DisplayName { get; set; }
     public Guid? DefaultPersonaId { get; set; }
     public DateTime CreatedAt { get; set; }
+    /// <summary>Last authenticated request, updated at most every few minutes to keep writes cheap.</summary>
+    public DateTime? LastSeenAt { get; set; }
 }

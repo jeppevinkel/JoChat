@@ -100,7 +100,7 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 
-    // Auto-apply pending migrations locally (SQLite) so the dev DB file stays current.
+    // Auto-apply pending migrations locally so the dev database stays current.
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();

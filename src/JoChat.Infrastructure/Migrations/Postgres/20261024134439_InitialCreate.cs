@@ -1,9 +1,10 @@
 ﻿using System;
 using Microsoft.EntityFrameworkCore.Migrations;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 #nullable disable
 
-namespace JoChat.Infrastructure.Migrations.Sqlite
+namespace JoChat.Infrastructure.Migrations.Postgres
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration
@@ -15,12 +16,12 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "ModelDefinitions",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Provider = table.Column<string>(type: "TEXT", nullable: false),
-                    ModelId = table.Column<string>(type: "TEXT", nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
-                    SupportsVision = table.Column<bool>(type: "INTEGER", nullable: false),
-                    IsEnabled = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Provider = table.Column<string>(type: "text", nullable: false),
+                    ModelId = table.Column<string>(type: "text", nullable: false),
+                    DisplayName = table.Column<string>(type: "text", nullable: false),
+                    SupportsVision = table.Column<bool>(type: "boolean", nullable: false),
+                    IsEnabled = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -31,11 +32,11 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "ScimGroups",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ExternalId = table.Column<string>(type: "TEXT", nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", nullable: false),
-                    Created = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    LastModified = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ExternalId = table.Column<string>(type: "text", nullable: false),
+                    DisplayName = table.Column<string>(type: "text", nullable: false),
+                    Created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastModified = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -46,17 +47,19 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "ScimUsers",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "TEXT", nullable: false),
-                    ExternalId = table.Column<string>(type: "TEXT", nullable: false),
-                    UserName = table.Column<string>(type: "TEXT", nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", nullable: true),
-                    Locale = table.Column<string>(type: "TEXT", nullable: true),
-                    Active = table.Column<bool>(type: "INTEGER", nullable: false),
-                    GivenName = table.Column<string>(type: "TEXT", nullable: true),
-                    FamilyName = table.Column<string>(type: "TEXT", nullable: true),
-                    Formatted = table.Column<string>(type: "TEXT", nullable: true),
-                    Created = table.Column<DateTimeOffset>(type: "TEXT", nullable: false),
-                    LastModified = table.Column<DateTimeOffset>(type: "TEXT", nullable: false)
+                    Id = table.Column<string>(type: "text", nullable: false),
+                    ExternalId = table.Column<string>(type: "text", nullable: false),
+                    UserName = table.Column<string>(type: "text", nullable: false),
+                    DisplayName = table.Column<string>(type: "text", nullable: true),
+                    Locale = table.Column<string>(type: "text", nullable: true),
+                    Active = table.Column<bool>(type: "boolean", nullable: false),
+                    IsDeleted = table.Column<bool>(type: "boolean", nullable: false),
+                    DeletedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: true),
+                    GivenName = table.Column<string>(type: "text", nullable: true),
+                    FamilyName = table.Column<string>(type: "text", nullable: true),
+                    Formatted = table.Column<string>(type: "text", nullable: true),
+                    Created = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
+                    LastModified = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -67,15 +70,15 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "UsageRecords",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    UserId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Provider = table.Column<string>(type: "TEXT", nullable: false),
-                    ModelOrVoiceId = table.Column<string>(type: "TEXT", nullable: false),
-                    Kind = table.Column<string>(type: "TEXT", nullable: false),
-                    TokensIn = table.Column<int>(type: "INTEGER", nullable: true),
-                    TokensOut = table.Column<int>(type: "INTEGER", nullable: true),
-                    Units = table.Column<int>(type: "INTEGER", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    UserId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Provider = table.Column<string>(type: "text", nullable: false),
+                    ModelOrVoiceId = table.Column<string>(type: "text", nullable: false),
+                    Kind = table.Column<string>(type: "text", nullable: false),
+                    TokensIn = table.Column<int>(type: "integer", nullable: true),
+                    TokensOut = table.Column<int>(type: "integer", nullable: true),
+                    Units = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -86,12 +89,13 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "UserProfiles",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ScimUserId = table.Column<string>(type: "TEXT", nullable: false),
-                    ExternalId = table.Column<string>(type: "TEXT", nullable: false),
-                    DisplayName = table.Column<string>(type: "TEXT", nullable: true),
-                    DefaultPersonaId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ScimUserId = table.Column<string>(type: "text", nullable: false),
+                    ExternalId = table.Column<string>(type: "text", nullable: false),
+                    DisplayName = table.Column<string>(type: "text", nullable: true),
+                    DefaultPersonaId = table.Column<Guid>(type: "uuid", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    LastSeenAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -102,11 +106,11 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "ScimGroupMemberEntity",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    GroupId = table.Column<string>(type: "TEXT", nullable: false),
-                    Value = table.Column<string>(type: "TEXT", nullable: false),
-                    Display = table.Column<string>(type: "TEXT", nullable: true)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    GroupId = table.Column<string>(type: "text", nullable: false),
+                    Value = table.Column<string>(type: "text", nullable: false),
+                    Display = table.Column<string>(type: "text", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -123,12 +127,12 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "ScimEmailEntity",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "INTEGER", nullable: false)
-                        .Annotation("Sqlite:Autoincrement", true),
-                    UserId = table.Column<string>(type: "TEXT", nullable: false),
-                    Value = table.Column<string>(type: "TEXT", nullable: false),
-                    Type = table.Column<string>(type: "TEXT", nullable: false),
-                    Primary = table.Column<bool>(type: "INTEGER", nullable: false)
+                    Id = table.Column<int>(type: "integer", nullable: false)
+                        .Annotation("Npgsql:ValueGenerationStrategy", NpgsqlValueGenerationStrategy.IdentityByDefaultColumn),
+                    UserId = table.Column<string>(type: "text", nullable: false),
+                    Value = table.Column<string>(type: "text", nullable: false),
+                    Type = table.Column<string>(type: "text", nullable: false),
+                    Primary = table.Column<bool>(type: "boolean", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -145,20 +149,20 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "Personas",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Name = table.Column<string>(type: "TEXT", nullable: false),
-                    Description = table.Column<string>(type: "TEXT", nullable: true),
-                    SystemPrompt = table.Column<string>(type: "TEXT", nullable: false),
-                    Provider = table.Column<string>(type: "TEXT", nullable: false),
-                    ModelId = table.Column<string>(type: "TEXT", nullable: false),
-                    Temperature = table.Column<double>(type: "REAL", nullable: true),
-                    MaxTokens = table.Column<int>(type: "INTEGER", nullable: true),
-                    DefaultTtsProvider = table.Column<string>(type: "TEXT", nullable: true),
-                    DefaultTtsVoiceId = table.Column<string>(type: "TEXT", nullable: true),
-                    OwnerId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    IsShared = table.Column<bool>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "text", nullable: false),
+                    Description = table.Column<string>(type: "text", nullable: true),
+                    SystemPrompt = table.Column<string>(type: "text", nullable: false),
+                    Provider = table.Column<string>(type: "text", nullable: false),
+                    ModelId = table.Column<string>(type: "text", nullable: false),
+                    Temperature = table.Column<double>(type: "double precision", nullable: true),
+                    MaxTokens = table.Column<int>(type: "integer", nullable: true),
+                    DefaultTtsProvider = table.Column<string>(type: "text", nullable: true),
+                    DefaultTtsVoiceId = table.Column<string>(type: "text", nullable: true),
+                    OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
+                    IsShared = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -175,12 +179,12 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "Chats",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Title = table.Column<string>(type: "TEXT", nullable: false),
-                    PersonaId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    OwnerId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Title = table.Column<string>(type: "text", nullable: false),
+                    PersonaId = table.Column<Guid>(type: "uuid", nullable: false),
+                    OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -203,14 +207,14 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "Messages",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ChatId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    ParentMessageId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    Role = table.Column<int>(type: "INTEGER", nullable: false),
-                    Content = table.Column<string>(type: "TEXT", nullable: false),
-                    TokensIn = table.Column<int>(type: "INTEGER", nullable: true),
-                    TokensOut = table.Column<int>(type: "INTEGER", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ChatId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ParentMessageId = table.Column<Guid>(type: "uuid", nullable: true),
+                    Role = table.Column<int>(type: "integer", nullable: false),
+                    Content = table.Column<string>(type: "text", nullable: false),
+                    TokensIn = table.Column<int>(type: "integer", nullable: true),
+                    TokensOut = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -227,16 +231,16 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                 name: "Attachments",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "TEXT", nullable: false),
-                    MessageId = table.Column<Guid>(type: "TEXT", nullable: true),
-                    OwnerId = table.Column<Guid>(type: "TEXT", nullable: false),
-                    Kind = table.Column<int>(type: "INTEGER", nullable: false),
-                    StoragePath = table.Column<string>(type: "TEXT", nullable: false),
-                    MimeType = table.Column<string>(type: "TEXT", nullable: false),
-                    SizeBytes = table.Column<long>(type: "INTEGER", nullable: false),
-                    Width = table.Column<int>(type: "INTEGER", nullable: true),
-                    Height = table.Column<int>(type: "INTEGER", nullable: true),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    MessageId = table.Column<Guid>(type: "uuid", nullable: true),
+                    OwnerId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Kind = table.Column<int>(type: "integer", nullable: false),
+                    StoragePath = table.Column<string>(type: "text", nullable: false),
+                    MimeType = table.Column<string>(type: "text", nullable: false),
+                    SizeBytes = table.Column<long>(type: "bigint", nullable: false),
+                    Width = table.Column<int>(type: "integer", nullable: true),
+                    Height = table.Column<int>(type: "integer", nullable: true),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {

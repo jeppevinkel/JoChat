@@ -13,15 +13,9 @@ public static class DependencyInjection
     public static IServiceCollection AddJoChatInfrastructure(
         this IServiceCollection services, IConfiguration config)
     {
-        var cs = config.GetConnectionString("Default")!;
-        var dbProvider = config["Database:Provider"] ?? "MySql";
-        services.AddDbContext<AppDbContext>(o =>
-        {
-            if (string.Equals(dbProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
-                o.UseSqlite(cs);
-            else
-                o.UseMySql(cs, ServerVersion.AutoDetect(cs));
-        });
+        var cs = config.GetConnectionString("Default")
+                 ?? throw new InvalidOperationException("ConnectionStrings:Default is not configured.");
+        services.AddDbContext<AppDbContext>(o => o.UseNpgsql(cs));
 
         services.AddMemoryCache();
         services.AddHttpContextAccessor();
