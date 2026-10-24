@@ -82,7 +82,7 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={guardedClose(isDirty, onOpenChange)} disablePointerDismissal={draft !== null}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New chat</DialogTitle>
           <DialogDescription>

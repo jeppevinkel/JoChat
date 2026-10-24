@@ -139,6 +139,16 @@
 html, body, #root {
   height: 100%;
 }
+/* The dynamic viewport tracks mobile browser toolbars and (with interactive-widget in
+   index.html) the on-screen keyboard, so the composer stays visible above it. */
+#root {
+  height: 100dvh;
+}
+body {
+  /* The app scrolls inside its panes; stop pull-to-refresh and rubber-banding the whole page. */
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
 /* Tailwind v4 preflight resets buttons to cursor: default; restore the pointer for anything
    clickable (buttons, links, role=button, checkbox/select labels) and show a clear "no" on disabled. */
@@ -165,7 +175,7 @@ html, body, #root {
 .prose-chat { overflow-wrap: anywhere; min-width: 0; }
 .prose-chat > :first-child { margin-top: 0; }
 .prose-chat > :last-child { margin-bottom: 0; }
-.prose-chat p, .prose-chat ul, .prose-chat ol, .prose-chat pre, .prose-chat blockquote { margin: 0.5em 0; }
+.prose-chat p, .prose-chat ul, .prose-chat ol, .prose-chat .code-block, .prose-chat .table-scroll, .prose-chat blockquote { margin: 0.5em 0; }
 .prose-chat ul { list-style: disc; padding-left: 1.25em; }
 .prose-chat ol { list-style: decimal; padding-left: 1.25em; }
 .prose-chat code { font-family: ui-monospace, monospace; font-size: 0.875em; background: color-mix(in oklab, currentColor 10%, transparent); padding: 0.1em 0.3em; border-radius: 0.25em; }
@@ -178,5 +188,9 @@ html, body, #root {
 .prose-chat hr { border-color: color-mix(in oklab, currentColor 20%, transparent); margin: 0.75em 0; }
 .prose-chat a { text-decoration: underline; }
 .prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 600; margin: 0.75em 0 0.25em; }
-.prose-chat table { border-collapse: collapse; margin: 0.5em 0; }
+.prose-chat .table-scroll { overflow-x: auto; }
+.prose-chat table { border-collapse: collapse; }
 .prose-chat th, .prose-chat td { border: 1px solid color-mix(in oklab, currentColor 20%, transparent); padding: 0.25em 0.5em; }
+/* Cells wrap at word boundaries only, so a wide table scrolls (see .table-scroll) rather than
+   being crushed letter by letter on a phone. */
+.prose-chat th, .prose-chat td { overflow-wrap: normal; }

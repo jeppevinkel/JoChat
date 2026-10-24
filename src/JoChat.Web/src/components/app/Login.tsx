@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button'
 export function Login() {
   const auth = useAuth()
   return (
-    <div className="flex h-full items-center justify-center">
-      <div className="bg-card text-card-foreground flex w-80 flex-col gap-4 rounded-xl border p-6 shadow-sm">
+    <div className="flex h-full items-center justify-center p-4">
+      <div className="bg-card text-card-foreground flex w-full max-w-80 flex-col gap-4 rounded-xl border p-6 shadow-sm">
         <div>
           <h1 className="font-heading text-xl font-semibold">JoChat</h1>
           <p className="text-muted-foreground text-sm">Sign in with your Authentik account to continue.</p>

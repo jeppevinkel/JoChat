@@ -1,11 +1,28 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type TouchEvent, type UIEvent, type WheelEvent } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type TouchEvent,
+  type UIEvent,
+  type WheelEvent,
+} from 'react'
 import { useParams } from 'react-router'
-import { ArrowDown, ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { ArrowDown, ImagePlus, Loader2, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type ChatStreamEvent, type ToolStep } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
+import { messageImages, useImageGallery, type GalleryItem } from '@/lib/use-image-gallery'
+import { COARSE_POINTER_QUERY, useMediaQuery } from '@/lib/use-media-query'
+import { cn } from '@/lib/utils'
 import { ChatHeader } from './ChatHeader'
+import { ImageGalleryProvider } from './ImageViewer'
 import { MessageBubble, type DisplayMessage, type MessageActions, type TtsDefaults } from './MessageBubble'
 
 interface PendingUpload {
@@ -18,6 +35,9 @@ interface PendingUpload {
 // Re-attach to auto-scroll only when genuinely at the bottom (px); detaching is driven by
 // user intent (wheel/touch/keys) so it wins even while content is streaming in fast.
 const REATTACH_THRESHOLD = 16
+
+// What the upload endpoint accepts; pasted or dropped files of other types are ignored.
+const IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif']
 
 // Keyed by chat id so switching chats remounts with fresh state instead of resetting in an effect.
 export function ChatView() {
@@ -38,6 +58,10 @@ function ChatPane({ chatId }: { chatId: string }) {
   const [text, setText] = useState('')
   const [uploads, setUploads] = useState<PendingUpload[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  // Touch keyboards have no comfortable Shift+Enter, so there Enter makes a newline and the
+  // button sends; with a hardware keyboard Enter sends.
+  const touch = useMediaQuery(COARSE_POINTER_QUERY)
   const [attached, setAttachedState] = useState(true)
   const attachedRef = useRef(true) // read by the auto-scroll effect without waiting for a render
   const setAttached = (v: boolean) => {
@@ -119,6 +143,14 @@ function ChatPane({ chatId }: { chatId: string }) {
 
   // Read-aloud uses the persona's configured voice; without one the button stays hidden.
   const summary = chats.find((c) => c.id === chatId)
+  const title = summary?.title
+  useEffect(() => {
+    if (!title) return
+    document.title = `${title} · JoChat`
+    return () => {
+      document.title = 'JoChat'
+    }
+  }, [title])
   const personaId = summary?.personaId
   useEffect(() => {
     if (!personaId) return
@@ -138,9 +170,8 @@ function ChatPane({ chatId }: { chatId: string }) {
     }
   }, [api, personaId])
 
-  const addFiles = (files: FileList | null) => {
-    if (!files) return
-    for (const file of Array.from(files)) {
+  const addFiles = (files: File[]) => {
+    for (const file of files.filter((f) => IMAGE_TYPES.includes(f.type))) {
       const pending: PendingUpload = { file, previewUrl: URL.createObjectURL(file) }
       setUploads((u) => [...u, pending])
       api
@@ -154,6 +185,35 @@ function ChatPane({ chatId }: { chatId: string }) {
     URL.revokeObjectURL(p.previewUrl)
     setUploads((u) => u.filter((x) => x !== p))
   }
+
+  const canAttach = !streaming && !imageMode
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) => IMAGE_TYPES.includes(f.type))
+    if (!canAttach || images.length === 0) return
+    e.preventDefault()
+    addFiles(images)
+  }
+  const onDragOver = (e: DragEvent) => {
+    if (!canAttach || !e.dataTransfer.types.includes('Files')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+    if (!dragging) setDragging(true)
+  }
+  const onDragLeave = (e: DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+  }
+  const onDrop = (e: DragEvent) => {
+    setDragging(false)
+    if (!canAttach) return
+    e.preventDefault()
+    addFiles(Array.from(e.dataTransfer.files))
+  }
+
+  // Every image in the conversation plus the pending uploads, in order, for the full-size viewer.
+  const gallery = useMemo<GalleryItem[]>(
+    () => [...messages.flatMap(messageImages), ...uploads.map((u) => ({ key: u.previewUrl, src: u.previewUrl, name: u.file.name }))],
+    [messages, uploads],
+  )
 
   const canSend = !streaming && text.trim().length > 0 && uploads.every((u) => u.id || u.error)
 
@@ -294,143 +354,182 @@ function ChatPane({ chatId }: { chatId: string }) {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'Assistant' && !m.id.startsWith('local-'))?.id
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
       e.preventDefault()
       void send()
     }
   }
 
   return (
-    <div className="flex h-full min-w-0 flex-1 flex-col">
-      {summary && <ChatHeader chat={summary} />}
-      <div className="relative min-h-0 flex-1">
-        <div
-          ref={scrollRef}
-          onScroll={onScroll}
-          onWheel={onWheel}
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onKeyDown={onScrollKey}
-          tabIndex={-1}
-          className="h-full overflow-y-auto outline-none"
-        >
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
-            {loadError && <p className="text-destructive text-sm">{loadError}</p>}
-            {messages.length === 0 && !loadError && (
-              <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
-            )}
-            {messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                tts={tts}
-                actions={actions}
-                canRegenerate={m.id === lastAssistantId}
-                busy={streaming}
-              />
-            ))}
-            {streaming && imageMode && (
-              <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
-            )}
-            {actionError && <p className="text-destructive text-sm">{actionError}</p>}
-          </div>
-        </div>
-        {!attached && (
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            aria-label="Jump to latest"
-            onClick={() => {
-              setAttached(true)
-              scrollToBottom('smooth')
-            }}
-            className="bg-background hover:bg-muted absolute right-4 bottom-3 z-10 rounded-full border shadow-md"
+    <ImageGalleryProvider items={gallery}>
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop}>
+        {summary && <ChatHeader chat={summary} />}
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={scrollRef}
+            onScroll={onScroll}
+            onWheel={onWheel}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onKeyDown={onScrollKey}
+            tabIndex={-1}
+            className="h-full overflow-y-auto overscroll-contain outline-none"
           >
-            <ArrowDown />
-          </Button>
+            <div className="mx-auto flex max-w-3xl flex-col gap-2 px-3 py-4 sm:px-4 sm:py-6">
+              {loadError && <p className="text-destructive text-sm">{loadError}</p>}
+              {messages.length === 0 && !loadError && (
+                <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
+              )}
+              {messages.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  tts={tts}
+                  actions={actions}
+                  canRegenerate={m.id === lastAssistantId}
+                  busy={streaming}
+                />
+              ))}
+              {streaming && imageMode && (
+                <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
+              )}
+              {actionError && <p className="text-destructive text-sm">{actionError}</p>}
+            </div>
+          </div>
+          {!attached && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon"
+              aria-label="Jump to latest"
+              onClick={() => {
+                setAttached(true)
+                scrollToBottom('smooth')
+              }}
+              className="bg-background hover:bg-muted absolute right-4 bottom-3 z-10 rounded-full border shadow-md pointer-coarse:size-10"
+            >
+              <ArrowDown />
+            </Button>
+          )}
+        </div>
+
+        <form onSubmit={send} className="border-border border-t p-2 sm:p-3">
+          <div className="mx-auto max-w-3xl">
+            {uploads.length > 0 && <UploadStrip uploads={uploads} onRemove={removeUpload} />}
+            {imageError && <p className="text-destructive mb-2 text-sm">{imageError}</p>}
+            <div className="bg-background focus-within:border-ring flex items-end gap-1 rounded-xl border p-1.5 shadow-xs transition-colors sm:gap-2 sm:p-2">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={IMAGE_TYPES.join(',')}
+                multiple
+                hidden
+                onChange={(e) => {
+                  addFiles(Array.from(e.target.files ?? []))
+                  e.target.value = ''
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Attach image"
+                title="Attach image (or paste / drop one)"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!canAttach}
+                className="pointer-coarse:size-9"
+              >
+                <ImagePlus />
+              </Button>
+              <Button
+                type="button"
+                variant={imageMode ? 'secondary' : 'ghost'}
+                size="icon"
+                aria-label="Generate image"
+                aria-pressed={imageMode}
+                title="Generate an image from the prompt instead of chatting"
+                onClick={() => setImageMode((v) => !v)}
+                disabled={streaming}
+                className="pointer-coarse:size-9"
+              >
+                <Sparkles />
+              </Button>
+              <Textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={onKeyDown}
+                onPaste={onPaste}
+                // Focusing on a touch device would throw up the keyboard over the conversation.
+                autoFocus={!touch}
+                enterKeyHint={touch ? 'enter' : 'send'}
+                placeholder={
+                  imageMode
+                    ? 'Describe the image to generate…'
+                    : touch
+                      ? 'Message…'
+                      : 'Message… (Enter to send, Shift+Enter for newline)'
+                }
+                rows={1}
+                className="max-h-36 min-h-8 flex-1 resize-none border-0 bg-transparent px-1.5 py-1.5 shadow-none focus-visible:ring-0 sm:max-h-48 sm:min-h-9 dark:bg-transparent"
+              />
+              {streaming ? (
+                <Button type="button" variant="outline" size="icon" aria-label="Stop" onClick={() => abortRef.current?.abort()} className="pointer-coarse:size-9">
+                  <Square />
+                </Button>
+              ) : (
+                <Button type="submit" size="icon" aria-label="Send" disabled={!canSend} className="pointer-coarse:size-9">
+                  <SendHorizontal />
+                </Button>
+              )}
+            </div>
+          </div>
+        </form>
+
+        {dragging && (
+          <div className="bg-background/80 border-primary text-foreground pointer-events-none absolute inset-2 z-20 flex items-center justify-center rounded-xl border-2 border-dashed text-sm font-medium backdrop-blur-xs">
+            Drop images to attach
+          </div>
         )}
       </div>
+    </ImageGalleryProvider>
+  )
+}
 
-      <form onSubmit={send} className="border-border border-t p-3">
-        <div className="mx-auto max-w-3xl">
-          {uploads.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-2">
-              {uploads.map((u) => (
-                <div key={u.previewUrl} className="relative">
-                  <img
-                    src={u.previewUrl}
-                    alt={u.file.name}
-                    className={`size-16 rounded-md object-cover ${u.id ? '' : 'opacity-50'} ${u.error ? 'ring-destructive ring-2' : ''}`}
-                    title={u.error}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Remove image"
-                    onClick={() => removeUpload(u)}
-                    className="bg-background text-foreground absolute -top-1.5 -right-1.5 rounded-full border p-0.5 shadow"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-          {imageError && <p className="text-destructive mb-2 text-sm">{imageError}</p>}
-          <div className="bg-background flex items-end gap-2 rounded-xl border p-2 shadow-xs">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              hidden
-              onChange={(e) => {
-                addFiles(e.target.files)
-                e.target.value = ''
-              }}
-            />
-            <Button
+// Images waiting to be sent: tap to view full size, × to drop. Upload failures are spelled out
+// rather than left in a tooltip that touch screens can't show.
+function UploadStrip({ uploads, onRemove }: { uploads: PendingUpload[]; onRemove: (u: PendingUpload) => void }) {
+  const gallery = useImageGallery()
+  const failed = uploads.filter((u) => u.error)
+  return (
+    <div className="mb-2 grid gap-1">
+      <div className="flex flex-wrap gap-2 pt-1.5">
+        {uploads.map((u) => (
+          <div key={u.previewUrl} className="relative">
+            <button type="button" onClick={() => gallery.open(u.previewUrl)} aria-label={`View ${u.file.name}`} className="block cursor-zoom-in rounded-md">
+              <img
+                src={u.previewUrl}
+                alt={u.file.name}
+                className={cn('size-16 rounded-md object-cover', !u.id && 'opacity-50', u.error && 'ring-destructive ring-2')}
+                title={u.error}
+              />
+            </button>
+            {!u.id && !u.error && <Loader2 className="pointer-events-none absolute inset-0 m-auto size-5 animate-spin" />}
+            <button
               type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Attach image"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={streaming || imageMode}
+              aria-label={`Remove ${u.file.name}`}
+              onClick={() => onRemove(u)}
+              className="bg-background text-foreground absolute -top-1.5 -right-1.5 rounded-full border p-0.5 shadow pointer-coarse:-top-2 pointer-coarse:-right-2 pointer-coarse:p-1"
             >
-              <ImagePlus />
-            </Button>
-            <Button
-              type="button"
-              variant={imageMode ? 'secondary' : 'ghost'}
-              size="icon"
-              aria-label="Generate image"
-              aria-pressed={imageMode}
-              title="Generate an image from the prompt instead of chatting"
-              onClick={() => setImageMode((v) => !v)}
-              disabled={streaming}
-            >
-              <Sparkles />
-            </Button>
-            <Textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder={imageMode ? 'Describe the image to generate…' : 'Message… (Enter to send, Shift+Enter for newline)'}
-              rows={1}
-              className="max-h-48 min-h-9 flex-1 resize-none border-0 shadow-none focus-visible:ring-0"
-            />
-            {streaming ? (
-              <Button type="button" variant="outline" size="icon" aria-label="Stop" onClick={() => abortRef.current?.abort()}>
-                <Square />
-              </Button>
-            ) : (
-              <Button type="submit" size="icon" aria-label="Send" disabled={!canSend}>
-                <SendHorizontal />
-              </Button>
-            )}
+              <X className="size-3" />
+            </button>
           </div>
-        </div>
-      </form>
+        ))}
+      </div>
+      {failed.map((u) => (
+        <p key={u.previewUrl} className="text-destructive text-xs">
+          {u.file.name}: {u.error}
+        </p>
+      ))}
     </div>
   )
 }
