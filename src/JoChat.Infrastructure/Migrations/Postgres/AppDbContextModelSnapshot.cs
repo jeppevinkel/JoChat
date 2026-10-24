@@ -123,6 +123,9 @@ namespace JoChat.Infrastructure.Migrations.Postgres
                     b.Property<int?>("TokensOut")
                         .HasColumnType("integer");
 
+                    b.Property<string>("ToolActivity")
+                        .HasColumnType("text");
+
                     b.HasKey("Id");
 
                     b.HasIndex("ChatId", "CreatedAt");
@@ -179,6 +182,15 @@ namespace JoChat.Infrastructure.Migrations.Postgres
 
                     b.Property<string>("Description")
                         .HasColumnType("text");
+
+                    b.Property<bool>("EnableCodeExecution")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("EnableWebFetch")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("EnableWebSearch")
+                        .HasColumnType("boolean");
 
                     b.Property<bool>("IsShared")
                         .HasColumnType("boolean");

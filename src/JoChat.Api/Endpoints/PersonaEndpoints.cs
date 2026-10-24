@@ -46,6 +46,9 @@ public static class PersonaEndpoints
                 MaxTokens = req.MaxTokens,
                 DefaultTtsProvider = req.DefaultTtsProvider,
                 DefaultTtsVoiceId = req.DefaultTtsVoiceId,
+                EnableWebSearch = req.EnableWebSearch,
+                EnableWebFetch = req.EnableWebFetch,
+                EnableCodeExecution = req.EnableCodeExecution,
                 IsShared = req.IsShared,
                 OwnerId = user.Id,
                 CreatedAt = DateTime.UtcNow,
@@ -73,6 +76,9 @@ public static class PersonaEndpoints
             persona.MaxTokens = req.MaxTokens;
             persona.DefaultTtsProvider = req.DefaultTtsProvider;
             persona.DefaultTtsVoiceId = req.DefaultTtsVoiceId;
+            persona.EnableWebSearch = req.EnableWebSearch;
+            persona.EnableWebFetch = req.EnableWebFetch;
+            persona.EnableCodeExecution = req.EnableCodeExecution;
             persona.IsShared = req.IsShared;
             persona.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
@@ -115,7 +121,8 @@ public static class PersonaEndpoints
 
     private static PersonaDto ToDto(Persona p, Guid currentUserId) => new(
         p.Id, p.Name, p.Description, p.SystemPrompt, p.Provider, p.ModelId, p.Temperature, p.MaxTokens,
-        p.DefaultTtsProvider, p.DefaultTtsVoiceId, p.IsShared, p.OwnerId == currentUserId, p.UpdatedAt);
+        p.DefaultTtsProvider, p.DefaultTtsVoiceId, p.EnableWebSearch, p.EnableWebFetch, p.EnableCodeExecution,
+        p.IsShared, p.OwnerId == currentUserId, p.UpdatedAt);
 }
 
 public record PersonaRequest(
@@ -128,6 +135,9 @@ public record PersonaRequest(
     int? MaxTokens,
     string? DefaultTtsProvider,
     string? DefaultTtsVoiceId,
+    bool EnableWebSearch,
+    bool EnableWebFetch,
+    bool EnableCodeExecution,
     bool IsShared);
 
 public record PersonaDto(
@@ -141,6 +151,9 @@ public record PersonaDto(
     int? MaxTokens,
     string? DefaultTtsProvider,
     string? DefaultTtsVoiceId,
+    bool EnableWebSearch,
+    bool EnableWebFetch,
+    bool EnableCodeExecution,
     bool IsShared,
     bool IsOwner,
     DateTime UpdatedAt);

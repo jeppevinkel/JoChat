@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using JoChat.Core.Abstractions;
 using JoChat.Core.Entities;
 using JoChat.Core.Enums;
@@ -25,6 +26,8 @@ public class ChatStreamingService(
     IServiceProvider services,
     ILogger<ChatStreamingService> logger) : IChatStreamingService
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public async IAsyncEnumerable<ChatStreamEvent> SendAndStreamAsync(
         Guid chatId, string text, List<Guid>? attachmentIds,
         [EnumeratorCancellation] CancellationToken ct)
@@ -126,9 +129,11 @@ public class ChatStreamingService(
         var persona = chat.Persona!;
         var history = await ChatHistory.BuildAsync(chat.Messages, storage, ct);
         var request = new ChatRequest(
-            persona.ModelId, persona.SystemPrompt, history, persona.Temperature, persona.MaxTokens);
+            persona.ModelId, persona.SystemPrompt, history, persona.Temperature, persona.MaxTokens,
+            EnabledTools(persona));
 
         var reply = new System.Text.StringBuilder();
+        var steps = new List<ToolStep>();
         ChatStreamEvent.Completed? completed = null;
         try
         {
@@ -138,6 +143,12 @@ public class ChatStreamingService(
                 {
                     case ChatStreamEvent.TextDelta delta:
                         reply.Append(delta.Text);
+                        break;
+                    case ChatStreamEvent.ToolUse use:
+                        steps.Add(new ToolStep(ToolStep.Use, use.Tool, use.Label));
+                        break;
+                    case ChatStreamEvent.ToolResult result:
+                        steps.Add(new ToolStep(ToolStep.Result, result.Tool, result.Label, result.IsError));
                         break;
                     case ChatStreamEvent.Completed done:
                         completed = done;
@@ -150,14 +161,23 @@ public class ChatStreamingService(
         {
             // Persist whatever the model produced even if the client disconnected mid-stream,
             // so the conversation history stays consistent with what was billed.
-            if (completed is not null || reply.Length > 0)
-                await PersistReplyAsync(chat, user, persona, parent, reply.ToString(), completed);
+            if (completed is not null || reply.Length > 0 || steps.Count > 0)
+                await PersistReplyAsync(chat, user, persona, parent, reply.ToString(), steps, completed);
         }
+    }
+
+    private static List<string>? EnabledTools(Persona persona)
+    {
+        List<string>? tools = null;
+        if (persona.EnableWebSearch) (tools ??= []).Add(ChatTools.WebSearch);
+        if (persona.EnableWebFetch) (tools ??= []).Add(ChatTools.WebFetch);
+        if (persona.EnableCodeExecution) (tools ??= []).Add(ChatTools.CodeExecution);
+        return tools;
     }
 
     private async Task PersistReplyAsync(
         Chat chat, UserProfile user, Persona persona, Message? parent,
-        string content, ChatStreamEvent.Completed? completed)
+        string content, List<ToolStep> steps, ChatStreamEvent.Completed? completed)
     {
         db.Messages.Add(new Message
         {
@@ -168,6 +188,7 @@ public class ChatStreamingService(
             Content = content,
             TokensIn = completed?.TokensIn,
             TokensOut = completed?.TokensOut,
+            ToolActivity = steps.Count == 0 ? null : JsonSerializer.Serialize(steps, JsonOptions),
             CreatedAt = DateTime.UtcNow,
         });
         if (completed is not null)

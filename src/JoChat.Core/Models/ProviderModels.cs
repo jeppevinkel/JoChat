@@ -5,7 +5,23 @@ public record ChatRequest(
     string SystemPrompt,
     IReadOnlyList<ChatRequestMessage> Messages,
     double? Temperature,
-    int? MaxTokens);
+    int? MaxTokens,
+    IReadOnlyList<string>? Tools = null);
+
+/// <summary>Provider-hosted tools a persona may enable; ids are stable across providers.</summary>
+public static class ChatTools
+{
+    public const string WebSearch = "web_search";
+    public const string WebFetch = "web_fetch";
+    public const string CodeExecution = "code_execution";
+}
+
+/// <summary>One visible step of tool activity during a reply, kept for display after reload.</summary>
+public record ToolStep(string Kind, string Tool, string Label, bool IsError = false)
+{
+    public const string Use = "use";
+    public const string Result = "result";
+}
 
 public record ChatRequestMessage(
     Enums.MessageRole Role,
@@ -17,6 +33,8 @@ public record ChatRequestImage(string MimeType, ReadOnlyMemory<byte> Data);
 public abstract record ChatStreamEvent
 {
     public sealed record TextDelta(string Text) : ChatStreamEvent;
+    public sealed record ToolUse(string Tool, string Label) : ChatStreamEvent;
+    public sealed record ToolResult(string Tool, string Label, bool IsError) : ChatStreamEvent;
     public sealed record Completed(int TokensIn, int TokensOut, string StopReason) : ChatStreamEvent;
     public sealed record Error(string Message) : ChatStreamEvent;
 }

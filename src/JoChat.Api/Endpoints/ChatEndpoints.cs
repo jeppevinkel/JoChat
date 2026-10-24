@@ -1,4 +1,5 @@
 using System.Net.ServerSentEvents;
+using System.Text.Json;
 using JoChat.Api.Services;
 using JoChat.Core.Models;
 using JoChat.Core.Abstractions;
@@ -56,14 +57,19 @@ public static class ChatEndpoints
                 .Select(m => new
                 {
                     m.Id, m.ParentMessageId, Role = m.Role.ToString(), m.Content,
-                    m.TokensIn, m.TokensOut, m.CreatedAt,
+                    m.TokensIn, m.TokensOut, m.CreatedAt, m.ToolActivity,
                     Attachments = m.Attachments.Select(a => new
                     {
                         a.Id, Kind = a.Kind.ToString(), a.MimeType, a.Width, a.Height,
                     }).ToList(),
                 })
                 .ToListAsync(ct);
-            return Results.Ok(messages);
+            // ToolActivity is stored as JSON text; hand the client structured steps.
+            return Results.Ok(messages.Select(m => new
+            {
+                m.Id, m.ParentMessageId, m.Role, m.Content, m.TokensIn, m.TokensOut, m.CreatedAt, m.Attachments,
+                ToolActivity = m.ToolActivity is null ? null : JsonSerializer.Deserialize<List<ToolStep>>(m.ToolActivity, JsonOptions),
+            }));
         });
 
         // The core loop: post a user message, stream the assistant reply via SSE.
@@ -146,9 +152,13 @@ public static class ChatEndpoints
         return group;
     }
 
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     private static string SseEventName(ChatStreamEvent e) => e switch
     {
         ChatStreamEvent.TextDelta => "text",
+        ChatStreamEvent.ToolUse => "tool_use",
+        ChatStreamEvent.ToolResult => "tool_result",
         ChatStreamEvent.Completed => "completed",
         ChatStreamEvent.Error => "error",
         _ => "message",
