@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 export function PageHeader({ children, className }: { children?: ReactNode; className?: string }) {
   const { isDesktop, sidebarInline, openSidebar, newChat } = useShell()
   return (
-    <header className={cn('border-border flex min-h-12 shrink-0 items-center gap-2 border-b px-3 py-1.5 sm:px-4', !sidebarInline && 'pl-1.5 sm:pl-2', className)}>
+    <header className={cn('border-border flex min-h-14 shrink-0 items-center gap-2 border-b px-3 py-1.5 sm:px-4', !sidebarInline && 'pl-1.5 sm:pl-2', className)}>
       {!sidebarInline && (
         <Button variant="ghost" size="icon" aria-label="Show sidebar" title="Show sidebar" onClick={openSidebar} className="pointer-coarse:size-10">
           {isDesktop ? <PanelLeftOpen /> : <Menu />}
@@ -26,5 +26,5 @@ export function PageHeader({ children, className }: { children?: ReactNode; clas
 }
 
 export function PageTitle({ children }: { children: ReactNode }) {
-  return <h1 className="font-heading min-w-0 flex-1 truncate text-base font-semibold">{children}</h1>
+  return <h1 className="font-heading min-w-0 flex-1 truncate text-xl font-semibold tracking-tight">{children}</h1>
 }

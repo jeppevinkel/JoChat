@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { useAuth } from 'react-oidc-context'
-import { MessageSquarePlus } from 'lucide-react'
+import { Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useApi } from '@/lib/api'
 import { AttachmentSourceContext } from '@/lib/attachment-source'
@@ -10,6 +10,7 @@ import { MeProvider } from '@/lib/me-context'
 import { useIsAdmin } from '@/lib/use-me'
 import { useShell } from '@/lib/use-shell'
 import { AppShell } from '@/components/app/AppShell'
+import { Seal } from '@/components/app/Brand'
 import { ChatView } from '@/components/app/ChatView'
 import { Login } from '@/components/app/Login'
 import { PageHeader } from '@/components/app/PageHeader'
@@ -23,11 +24,15 @@ function Empty() {
   return (
     <>
       {!sidebarInline && <PageHeader />}
-      <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center text-sm">
-        Pick a chat or start a new one.
-        <Button onClick={newChat}>
-          <MessageSquarePlus data-icon="inline-start" />
-          New chat
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+        <Seal className="size-12 text-2xl" />
+        <div className="grid gap-1">
+          <p className="font-heading text-2xl font-semibold tracking-tight">Start a conversation</p>
+          <p className="text-muted-foreground text-sm">Pick one from the sidebar, or begin a new one with any persona.</p>
+        </div>
+        <Button onClick={newChat} className="bg-accent-ink text-accent-ink-foreground hover:bg-accent-ink/85">
+          <Plus data-icon="inline-start" />
+          New conversation
         </Button>
       </div>
     </>

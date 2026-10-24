@@ -1,7 +1,7 @@
 import { useMemo, useState, type ComponentType } from 'react'
 import { NavLink, useNavigate, useParams } from 'react-router'
 import { useAuth } from 'react-oidc-context'
-import { LogOut, MessageSquarePlus, PanelLeftClose, Search, ShieldCheck, Trash2, UserCog, X } from 'lucide-react'
+import { LogOut, PanelLeftClose, Plus, Search, ShieldCheck, Trash2, UserCog, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -9,6 +9,7 @@ import { useApi, type ChatSummary } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
 import { useIsAdmin } from '@/lib/use-me'
 import { cn } from '@/lib/utils'
+import { Wordmark } from './Brand'
 
 interface Props {
   className?: string
@@ -43,17 +44,21 @@ export function Sidebar({ className, onNewChat, onNavigate, onHide }: Props) {
 
   return (
     <aside className={cn('bg-sidebar text-sidebar-foreground flex h-full flex-col', className)}>
-      <div className="flex items-center gap-2 px-3 pt-3 pb-2">
-        <span className="font-heading flex-1 text-lg font-semibold">JoChat</span>
+      <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+        <Wordmark className="flex-1" />
         <Button variant="ghost" size="icon" aria-label="Hide sidebar" title="Hide sidebar" onClick={onHide} className="pointer-coarse:size-10">
           <PanelLeftClose />
         </Button>
       </div>
 
       <div className="grid gap-2 px-3 pb-2">
-        <Button onClick={onNewChat} className="justify-start pointer-coarse:h-10">
-          <MessageSquarePlus data-icon="inline-start" />
-          New chat
+        <Button
+          variant="outline"
+          onClick={onNewChat}
+          className="border-sidebar-foreground/25 hover:border-accent-ink hover:bg-sidebar-accent h-9 justify-start border-dashed bg-transparent dark:bg-transparent pointer-coarse:h-10"
+        >
+          <Plus data-icon="inline-start" className="text-accent-ink" />
+          New conversation
         </Button>
         {chats.length > 0 && (
           <div className="relative">
@@ -87,7 +92,7 @@ export function Sidebar({ className, onNewChat, onNavigate, onHide }: Props) {
         {query && groups.length === 0 && <p className="text-muted-foreground px-2 py-1 text-sm">No matching chats.</p>}
         {groups.map((g) => (
           <section key={g.label} className="pb-2">
-            <h2 className="text-muted-foreground px-2 pt-2 pb-1 text-xs font-medium">{g.label}</h2>
+            <h2 className="text-muted-foreground px-2 pt-3 pb-1 text-[0.68rem] font-semibold tracking-[0.12em] uppercase">{g.label}</h2>
             <ul className="flex flex-col gap-0.5">
               {g.chats.map((c) => (
                 <li key={c.id} className="group/chat relative">
@@ -96,8 +101,8 @@ export function Sidebar({ className, onNewChat, onNavigate, onHide }: Props) {
                     onClick={onNavigate}
                     className={({ isActive }) =>
                       cn(
-                        'hover:bg-sidebar-accent block truncate rounded-md px-2 py-1.5 pr-9 text-sm pointer-coarse:py-2.5',
-                        isActive && 'bg-sidebar-accent font-medium',
+                        'hover:bg-sidebar-accent relative block truncate rounded-sm px-2.5 py-1.5 pr-9 text-sm pointer-coarse:py-2.5',
+                        isActive && 'before:bg-accent-ink bg-sidebar-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full',
                       )
                     }
                     title={c.title}
@@ -132,7 +137,7 @@ export function Sidebar({ className, onNewChat, onNavigate, onHide }: Props) {
       </nav>
 
       <div className="border-sidebar-border flex items-center gap-2 border-t p-2 pl-3">
-        <span className="bg-sidebar-accent flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-medium uppercase" aria-hidden>
+        <span className="border-sidebar-foreground/25 font-heading flex size-7 shrink-0 items-center justify-center rounded-full border text-sm font-semibold uppercase" aria-hidden>
           {displayName.slice(0, 1)}
         </span>
         <span className="min-w-0 flex-1 truncate text-sm" title={displayName}>
@@ -163,8 +168,8 @@ function SideLink({ to, icon: Icon, onNavigate, children }: { to: string; icon: 
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          'hover:bg-sidebar-accent flex items-center gap-2 rounded-md px-2 py-1.5 text-sm pointer-coarse:py-2.5',
-          isActive && 'bg-sidebar-accent font-medium',
+          'hover:bg-sidebar-accent relative flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-sm pointer-coarse:py-2.5',
+          isActive && 'before:bg-accent-ink bg-sidebar-accent font-medium before:absolute before:inset-y-1.5 before:left-0 before:w-[3px] before:rounded-full',
         )
       }
     >

@@ -8,6 +8,7 @@ import { messageImages, useImageGallery, type GalleryItem } from '@/lib/use-imag
 import { play, stop, usePlayer } from '@/lib/tts-player'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
+import { Monogram } from './Brand'
 import { CopyButton } from './CopyButton'
 
 const MarkdownContent = lazy(() => import('./MarkdownContent'))
@@ -41,9 +42,11 @@ interface Props {
   actions?: MessageActions
   canRegenerate?: boolean
   busy?: boolean
+  /** Who replies (the persona's name), shown above assistant turns. */
+  speaker?: string
 }
 
-export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Props) {
+export function MessageBubble({ message, tts, actions, canRegenerate, busy, speaker }: Props) {
   const isUser = message.role === 'User'
   // Local placeholders (in-flight or failed replies) have no server id to act on.
   const persisted = !message.id.startsWith('local-')
@@ -82,16 +85,24 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
   return (
     // Focusable so a tap on a touch screen reveals the message's actions (via focus-within).
     <div tabIndex={-1} className={cn('group/msg flex w-full flex-col outline-none', isUser ? 'items-end' : 'items-start')}>
+      {!isUser && speaker && (
+        <div className="text-muted-foreground mb-1.5 flex items-center gap-2 text-[0.7rem] font-semibold tracking-[0.12em] uppercase">
+          <Monogram name={speaker} />
+          {speaker}
+        </div>
+      )}
       <div
         className={cn(
-          'relative min-w-0 rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed sm:max-w-[85%] sm:px-4',
-          // Replies get the full width on phones; your own messages stay offset to the right.
-          isUser ? 'bg-user-bubble max-w-[88%]' : 'bg-muted max-w-full',
+          'relative min-w-0',
+          // Your words: a slip of paper, offset right. Replies: open text on the page, like a transcript.
+          isUser
+            ? 'bg-user-bubble max-w-[88%] rounded-md rounded-tr-[2px] border border-[color-mix(in_oklab,var(--accent-ink)_22%,transparent)] px-3.5 py-2.5 text-[0.9375rem] leading-relaxed sm:max-w-[80%]'
+            : 'w-full',
           editing && 'w-full sm:w-[85%]',
         )}
       >
         {images.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-2 flex flex-wrap items-start gap-2">
             {images.map((item) => (
               <Thumbnail key={item.key} item={item} single={images.length === 1} />
             ))}
@@ -121,13 +132,13 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
             </div>
           </div>
         ) : (
-          <div className="prose-chat">
+          <div className={cn('prose-chat', !isUser && 'prose-reply')}>
             {message.steps && message.steps.length > 0 && <ToolActivity steps={message.steps} />}
             <Suspense fallback={<p className="whitespace-pre-wrap">{message.content}</p>}>
               <MarkdownContent>{message.content}</MarkdownContent>
             </Suspense>
             {message.streaming && !message.content && (
-              <span className="text-muted-foreground animate-pulse">Thinking…</span>
+              <span className="text-muted-foreground animate-pulse italic">Thinking…</span>
             )}
           </div>
         )}
@@ -140,13 +151,14 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
             ))}
           </ul>
         )}
-        {message.error && <p className="text-destructive mt-2 text-xs">{message.error}</p>}
+        {message.error && <p className="text-destructive mt-2 font-sans text-xs">{message.error}</p>}
       </div>
 
       {!editing && (canCopy || canAct || canSpeak) && (
         <div
           className={cn(
-            'text-muted-foreground mt-0.5 flex items-center gap-0.5 px-1 opacity-0 transition-opacity',
+            'text-muted-foreground mt-1 flex items-center gap-0.5 opacity-0 transition-opacity',
+            isUser ? 'px-0.5' : '-ml-1.5',
             'group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 has-[[data-active]]:opacity-100',
             // No hover on touch screens: replies always show theirs, your own messages on tap.
             !isUser && 'pointer-coarse:opacity-100',
@@ -184,7 +196,7 @@ function Thumbnail({ item, single }: { item: GalleryItem; single: boolean }) {
       type="button"
       onClick={() => gallery.open(item.key)}
       aria-label={`View ${item.name}`}
-      className="focus-visible:ring-ring/50 block max-w-full cursor-zoom-in rounded-md outline-none focus-visible:ring-3"
+      className="focus-visible:ring-ring/50 block max-w-full cursor-zoom-in rounded-sm outline-none focus-visible:ring-3 [&_img]:rounded-sm [&_img]:border [&>div]:rounded-sm"
     >
       {item.attachmentId ? (
         <AuthImage id={item.attachmentId} width={item.width} height={item.height} className={size} />
@@ -224,7 +236,7 @@ function FileChip({ attachment }: { attachment: AttachmentRef }) {
       type="button"
       onClick={download}
       disabled={busy}
-      className="bg-background text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs shadow-xs disabled:opacity-50"
+      className="bg-card text-foreground hover:border-accent-ink inline-flex items-center gap-1.5 rounded-sm border px-2 py-1 font-sans text-xs transition-colors disabled:opacity-50"
       title={`${name} · ${formatBytes(attachment.sizeBytes)}`}
     >
       {busy ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
@@ -245,7 +257,7 @@ const TOOL_ICONS: Record<string, typeof Wrench> = {
 // Compact log of what the model did with its tools, shown above the reply text.
 function ToolActivity({ steps }: { steps: ToolStep[] }) {
   return (
-    <ul className="text-muted-foreground mb-2 grid gap-0.5 text-xs">
+    <ul className="text-muted-foreground border-accent-ink/60 mb-3 grid gap-0.5 border-l-2 py-0.5 pl-3 font-sans text-xs">
       {steps.map((s, i) => {
         const Icon = TOOL_ICONS[s.tool] ?? Wrench
         return (

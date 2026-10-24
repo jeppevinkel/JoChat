@@ -375,10 +375,10 @@ function ChatPane({ chatId }: { chatId: string }) {
             tabIndex={-1}
             className="h-full overflow-y-auto overscroll-contain outline-none"
           >
-            <div className="mx-auto flex max-w-3xl flex-col gap-2 px-3 py-4 sm:px-4 sm:py-6">
+            <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-8">
               {loadError && <p className="text-destructive text-sm">{loadError}</p>}
               {messages.length === 0 && !loadError && (
-                <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
+                <p className="text-muted-foreground font-heading py-16 text-center text-lg italic">Say something to get started.</p>
               )}
               {messages.map((m) => (
                 <MessageBubble
@@ -388,10 +388,11 @@ function ChatPane({ chatId }: { chatId: string }) {
                   actions={actions}
                   canRegenerate={m.id === lastAssistantId}
                   busy={streaming}
+                  speaker={summary?.personaName}
                 />
               ))}
               {streaming && imageMode && (
-                <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
+                <p className="text-muted-foreground font-heading animate-pulse italic">Generating image…</p>
               )}
               {actionError && <p className="text-destructive text-sm">{actionError}</p>}
             </div>
@@ -413,11 +414,11 @@ function ChatPane({ chatId }: { chatId: string }) {
           )}
         </div>
 
-        <form onSubmit={send} className="border-border border-t p-2 sm:p-3">
+        <form onSubmit={send} className="px-2 pb-2 sm:px-6 sm:pb-5">
           <div className="mx-auto max-w-3xl">
             {uploads.length > 0 && <UploadStrip uploads={uploads} onRemove={removeUpload} />}
             {imageError && <p className="text-destructive mb-2 text-sm">{imageError}</p>}
-            <div className="bg-background focus-within:border-ring flex items-end gap-1 rounded-xl border p-1.5 shadow-xs transition-colors sm:gap-2 sm:p-2">
+            <div className="bg-card focus-within:border-accent-ink/60 flex items-end gap-1 rounded-lg border p-1.5 shadow-[0_1px_0_var(--border),0_8px_24px_-12px_color-mix(in_oklab,var(--foreground)_25%,transparent)] transition-colors sm:gap-1.5 sm:p-2">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -443,14 +444,14 @@ function ChatPane({ chatId }: { chatId: string }) {
               </Button>
               <Button
                 type="button"
-                variant={imageMode ? 'secondary' : 'ghost'}
+                variant="ghost"
                 size="icon"
                 aria-label="Generate image"
                 aria-pressed={imageMode}
                 title="Generate an image from the prompt instead of chatting"
                 onClick={() => setImageMode((v) => !v)}
                 disabled={streaming}
-                className="pointer-coarse:size-9"
+                className={cn('pointer-coarse:size-9', imageMode && 'bg-accent-ink/20 text-foreground hover:bg-accent-ink/30')}
               >
                 <Sparkles />
               </Button>
@@ -477,7 +478,7 @@ function ChatPane({ chatId }: { chatId: string }) {
                   <Square />
                 </Button>
               ) : (
-                <Button type="submit" size="icon" aria-label="Send" disabled={!canSend} className="pointer-coarse:size-9">
+                <Button type="submit" size="icon" aria-label="Send" disabled={!canSend} className="bg-accent-ink text-accent-ink-foreground hover:bg-accent-ink/85 pointer-coarse:size-9">
                   <SendHorizontal />
                 </Button>
               )}

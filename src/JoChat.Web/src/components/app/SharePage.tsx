@@ -9,6 +9,7 @@ import { ApiError, useApi, type Persona, type SharedChat } from '@/lib/api'
 import { AttachmentSourceContext } from '@/lib/attachment-source'
 import { selectClass } from '@/lib/persona'
 import { messageImages } from '@/lib/use-image-gallery'
+import { Seal } from './Brand'
 import { ImageGalleryProvider } from './ImageViewer'
 import { MessageBubble } from './MessageBubble'
 
@@ -102,9 +103,12 @@ export default function SharePage() {
     <AttachmentSourceContext.Provider value={resolver}>
       <ImageGalleryProvider items={gallery}>
         <div className="flex h-full flex-col">
-          <header className="border-border flex min-h-12 items-center gap-2 border-b px-3 py-1.5 sm:gap-3 sm:px-4">
+          <header className="border-border flex min-h-14 items-center gap-2 border-b px-3 py-1.5 sm:gap-3 sm:px-4">
+            <Link to="/" aria-label="JoChat">
+              <Seal />
+            </Link>
             <div className="min-w-0 flex-1">
-              <h1 className="truncate text-sm font-medium" title={chat.title}>
+              <h1 className="font-heading truncate text-base font-semibold" title={chat.title}>
                 {chat.title}
               </h1>
               <p className="text-muted-foreground truncate text-xs">
@@ -132,12 +136,13 @@ export default function SharePage() {
             )}
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-            <div className="mx-auto flex max-w-3xl flex-col gap-2 px-3 py-4 sm:px-4 sm:py-6">
-              {chat.persona?.description && <p className="text-muted-foreground text-center text-xs">{chat.persona.description}</p>}
+            <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-8">
+              {chat.persona?.description && <p className="text-muted-foreground font-heading text-center italic">{chat.persona.description}</p>}
               {chat.messages.map((m) => (
                 <MessageBubble
                   key={m.id}
                   message={{ id: m.id, role: m.role, content: m.content, attachments: m.attachments, steps: m.toolActivity ?? undefined }}
+                speaker={chat.persona?.name ?? 'Assistant'}
                 />
               ))}
               {error && <p className="text-destructive text-sm">{error}</p>}

@@ -13,11 +13,11 @@ export function ChatHeader({ chat }: { chat: ChatSummary }) {
   return (
     <PageHeader>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate text-sm font-medium" title={chat.title}>
+        <h1 className="font-heading truncate text-base leading-snug font-semibold" title={chat.title}>
           {chat.title}
         </h1>
         <p className="text-muted-foreground truncate text-xs">
-          <Link to="/personas" className="hover:underline">
+          <Link to="/personas" className="hover:text-foreground decoration-accent-ink underline-offset-2 hover:underline">
             {chat.personaName}
           </Link>
           <span> · {chat.personaModelId}</span>
