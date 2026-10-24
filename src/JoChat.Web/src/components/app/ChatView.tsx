@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type UIEvent } from 'react'
 import { useParams } from 'react-router'
-import { ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
+import { ArrowDown, ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { useApi } from '@/lib/api'
+import { useApi, type ChatStreamEvent } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
-import { MessageBubble, type DisplayMessage, type TtsDefaults } from './MessageBubble'
+import { MessageBubble, type DisplayMessage, type MessageActions, type TtsDefaults } from './MessageBubble'
 
 interface PendingUpload {
   file: File
@@ -13,6 +13,9 @@ interface PendingUpload {
   id?: string
   error?: string
 }
+
+// How close to the bottom (px) still counts as "at the bottom" for auto-scroll.
+const ATTACH_THRESHOLD = 48
 
 // Keyed by chat id so switching chats remounts with fresh state instead of resetting in an effect.
 export function ChatView() {
@@ -28,12 +31,14 @@ function ChatPane({ chatId }: { chatId: string }) {
   const [tts, setTts] = useState<TtsDefaults | null>(null)
   const [imageMode, setImageMode] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [text, setText] = useState('')
   const [uploads, setUploads] = useState<PendingUpload[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [attached, setAttached] = useState(true)
   const abortRef = useRef<AbortController | null>(null)
-  const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
@@ -52,9 +57,18 @@ function ChatPane({ chatId }: { chatId: string }) {
     return () => abortRef.current?.abort()
   }, [load])
 
+  // Auto-scroll follows new content only while the user is at the bottom. Scrolling up
+  // detaches; scrolling back to the bottom (or sending a message) re-attaches.
+  const scrollToBottom = (behavior: ScrollBehavior = 'auto') =>
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior })
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end' })
-  }, [messages])
+    if (attached) scrollToBottom()
+  }, [messages, attached])
+  const onScroll = (e: UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight
+    setAttached(distance <= ATTACH_THRESHOLD)
+  }
 
   // Read-aloud uses the persona's configured voice; without one the button stays hidden.
   const personaId = chats.find((c) => c.id === chatId)?.personaId
@@ -95,11 +109,56 @@ function ChatPane({ chatId }: { chatId: string }) {
 
   const canSend = !streaming && text.trim().length > 0 && uploads.every((u) => u.id || u.error)
 
+  // Drives a reply stream into a placeholder assistant bubble, then reconciles with the server.
+  const consume = async (stream: AsyncGenerator<ChatStreamEvent>, assistantId: string, controller: AbortController) => {
+    const patchAssistant = (patch: Partial<DisplayMessage> | ((m: DisplayMessage) => DisplayMessage)) =>
+      setMessages((list) =>
+        list.map((m) => (m.id === assistantId ? (typeof patch === 'function' ? patch(m) : { ...m, ...patch }) : m)),
+      )
+    let failure: string | null = null
+    let partial = ''
+    try {
+      for await (const evt of stream) {
+        if (evt.type === 'text') {
+          partial += evt.text
+          patchAssistant((m) => ({ ...m, content: m.content + evt.text }))
+        } else if (evt.type === 'error') {
+          failure = evt.message
+          patchAssistant({ error: evt.message, streaming: false })
+        } else if (evt.type === 'completed') {
+          patchAssistant({ streaming: false })
+        }
+      }
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        failure = err instanceof Error ? err.message : String(err)
+        patchAssistant({ error: failure, streaming: false })
+      }
+    } finally {
+      patchAssistant({ streaming: false })
+      setStreaming(false)
+      abortRef.current = null
+      // Pull the persisted versions (real ids, attachment refs) and the possibly-renamed chat.
+      await load()
+      void refresh()
+      // A failed reply is never persisted, so re-attach the error after the reload or it
+      // silently disappears.
+      if (failure) {
+        const message = failure
+        setMessages((list) => [
+          ...list,
+          { id: assistantId, role: 'Assistant', content: partial, attachments: [], error: message },
+        ])
+      }
+    }
+  }
+
   const generateImage = async () => {
     const prompt = text.trim()
     setText('')
     setStreaming(true)
     setImageError(null)
+    setAttached(true)
     try {
       await api.generateImage({ prompt, chatId })
       await load()
@@ -130,52 +189,53 @@ function ChatPane({ chatId }: { chatId: string }) {
     setText('')
     setUploads([])
     setStreaming(true)
+    setAttached(true)
     const controller = new AbortController()
     abortRef.current = controller
-
-    const patchAssistant = (patch: Partial<DisplayMessage> | ((m: DisplayMessage) => DisplayMessage)) =>
-      setMessages((list) =>
-        list.map((m) => (m.id === assistantId ? (typeof patch === 'function' ? patch(m) : { ...m, ...patch }) : m)),
-      )
-
-    let failure: string | null = null
-    let partial = ''
     try {
-      for await (const evt of api.sendMessage(chatId, userMsg.content, attachmentIds, controller.signal)) {
-        if (evt.type === 'text') {
-          partial += evt.text
-          patchAssistant((m) => ({ ...m, content: m.content + evt.text }))
-        } else if (evt.type === 'error') {
-          failure = evt.message
-          patchAssistant({ error: evt.message, streaming: false })
-        } else if (evt.type === 'completed') {
-          patchAssistant({ streaming: false })
-        }
-      }
-    } catch (err) {
-      if (!controller.signal.aborted) {
-        failure = err instanceof Error ? err.message : String(err)
-        patchAssistant({ error: failure, streaming: false })
-      }
+      await consume(api.sendMessage(chatId, userMsg.content, attachmentIds, controller.signal), assistantId, controller)
     } finally {
-      patchAssistant({ streaming: false })
-      setStreaming(false)
-      abortRef.current = null
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
-      // Pull the persisted versions (real ids, attachment refs) and the possibly-renamed chat.
-      await load()
-      void refresh()
-      // A failed reply is never persisted, so re-attach the error after the reload or it
-      // silently disappears.
-      if (failure) {
-        const message = failure
-        setMessages((list) => [
-          ...list,
-          { id: assistantId, role: 'Assistant', content: partial, attachments: [], error: message },
-        ])
-      }
     }
   }
+
+  const actions: MessageActions = {
+    onEdit: async (id, content) => {
+      setActionError(null)
+      try {
+        await api.updateMessage(chatId, id, content)
+        setMessages((list) => list.map((m) => (m.id === id ? { ...m, content, attachments: m.attachments.filter((a) => a.kind !== 'TtsAudio') } : m)))
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : String(e))
+        throw e
+      }
+    },
+    onDelete: async (id) => {
+      if (!confirm('Delete this message?')) return
+      setActionError(null)
+      try {
+        await api.deleteMessage(chatId, id)
+        setMessages((list) => list.filter((m) => m.id !== id))
+      } catch (e) {
+        setActionError(e instanceof Error ? e.message : String(e))
+      }
+    },
+    onRegenerate: (id) => {
+      if (streaming) return
+      setActionError(null)
+      const index = messages.findIndex((m) => m.id === id)
+      const assistantId = `local-${Date.now()}-a`
+      // Drop the target and everything after it locally, mirroring what the server does.
+      setMessages((list) => [...list.slice(0, index), { id: assistantId, role: 'Assistant', content: '', attachments: [], streaming: true }])
+      setStreaming(true)
+      setAttached(true)
+      const controller = new AbortController()
+      abortRef.current = controller
+      void consume(api.regenerate(chatId, id, controller.signal), assistantId, controller)
+    },
+  }
+
+  const lastAssistantId = [...messages].reverse().find((m) => m.role === 'Assistant' && !m.id.startsWith('local-'))?.id
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -186,20 +246,44 @@ function ChatPane({ chatId }: { chatId: string }) {
 
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
-          {loadError && <p className="text-destructive text-sm">{loadError}</p>}
-          {messages.length === 0 && !loadError && (
-            <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
-          )}
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} tts={tts} />
-          ))}
-          {streaming && imageMode && (
-            <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
-          )}
-          <div ref={bottomRef} />
+      <div className="relative min-h-0 flex-1">
+        <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto">
+          <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
+            {loadError && <p className="text-destructive text-sm">{loadError}</p>}
+            {messages.length === 0 && !loadError && (
+              <p className="text-muted-foreground py-12 text-center text-sm">Say something to get started.</p>
+            )}
+            {messages.map((m) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                tts={tts}
+                actions={actions}
+                canRegenerate={m.id === lastAssistantId}
+                busy={streaming}
+              />
+            ))}
+            {streaming && imageMode && (
+              <p className="text-muted-foreground animate-pulse text-sm">Generating image…</p>
+            )}
+            {actionError && <p className="text-destructive text-sm">{actionError}</p>}
+          </div>
         </div>
+        {!attached && (
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Jump to latest"
+            onClick={() => {
+              setAttached(true)
+              scrollToBottom('smooth')
+            }}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow"
+          >
+            <ArrowDown />
+          </Button>
+        )}
       </div>
 
       <form onSubmit={send} className="border-border border-t p-3">

@@ -144,6 +144,27 @@ async function throwIfFailed(res: Response): Promise<void> {
   throw new ApiError(res.status, detail)
 }
 
+async function* streamEvents(
+  url: string,
+  body: unknown,
+  authHeaders: Record<string, string>,
+  signal?: AbortSignal,
+): AsyncGenerator<ChatStreamEvent> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { ...authHeaders, 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal,
+  })
+  await throwIfFailed(res)
+  for await (const evt of readSse(res)) {
+    const data = JSON.parse(evt.data)
+    if (evt.event === 'text' || evt.event === 'completed' || evt.event === 'error') {
+      yield { type: evt.event, ...data } as ChatStreamEvent
+    }
+  }
+}
+
 export function createApi(getToken: () => string | undefined) {
   const headers = (extra: Record<string, string> = {}) => ({
     Authorization: `Bearer ${getToken() ?? ''}`,
@@ -173,6 +194,13 @@ export function createApi(getToken: () => string | undefined) {
       json<{ id: string }>('/chats', { method: 'POST', body: JSON.stringify({ personaId }) }),
     deleteChat: (id: string) => json<void>(`/chats/${id}`, { method: 'DELETE' }),
     messages: (chatId: string) => json<Message[]>(`/chats/${chatId}/messages`),
+    updateMessage: (chatId: string, messageId: string, content: string) =>
+      json<{ id: string; content: string }>(`/chats/${chatId}/messages/${messageId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ content }),
+      }),
+    deleteMessage: (chatId: string, messageId: string) =>
+      json<void>(`/chats/${chatId}/messages/${messageId}`, { method: 'DELETE' }),
 
     generateImage: (body: { prompt: string; chatId?: string; provider?: string; size?: string; quality?: string }) =>
       json<{ id: string; url: string; mimeType: string; messageId: string | null }>('/images/generate', {
@@ -221,26 +249,11 @@ export function createApi(getToken: () => string | undefined) {
       return URL.createObjectURL(await res.blob())
     },
 
-    sendMessage: async function* (
-      chatId: string,
-      text: string,
-      attachmentIds: string[],
-      signal?: AbortSignal,
-    ): AsyncGenerator<ChatStreamEvent> {
-      const res = await fetch(`/api/chats/${chatId}/messages`, {
-        method: 'POST',
-        headers: headers({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
-        body: JSON.stringify({ text, attachmentIds }),
-        signal,
-      })
-      await throwIfFailed(res)
-      for await (const evt of readSse(res)) {
-        const data = JSON.parse(evt.data)
-        if (evt.event === 'text' || evt.event === 'completed' || evt.event === 'error') {
-          yield { type: evt.event, ...data } as ChatStreamEvent
-        }
-      }
-    },
+    sendMessage: (chatId: string, text: string, attachmentIds: string[], signal?: AbortSignal) =>
+      streamEvents(`/api/chats/${chatId}/messages`, { text, attachmentIds }, headers(), signal),
+
+    regenerate: (chatId: string, messageId: string, signal?: AbortSignal) =>
+      streamEvents(`/api/chats/${chatId}/messages/${messageId}/regenerate`, undefined, headers(), signal),
   }
 }
 
