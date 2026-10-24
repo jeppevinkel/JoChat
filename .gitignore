@@ -8,3 +8,5 @@ riderModule.iml
 *.db
 *.db-shm
 *.db-wal
+# Built web client (produced by the PublishSpa target)
+src/JoChat.Api/wwwroot/

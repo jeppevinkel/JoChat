@@ -58,6 +58,18 @@ builder.Services.AddOpenApi();
 
 var app = builder.Build();
 
+// Serve the built web client (JoChat.Web -> wwwroot, see the PublishSpa target) when present.
+// Static files must run before routing: WebApplication otherwise inserts routing first, the SPA
+// fallback endpoint matches /assets/*, and the static file middleware steps aside.
+var spaRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
+var serveSpa = File.Exists(Path.Combine(spaRoot, "index.html"));
+if (serveSpa)
+{
+    app.UseDefaultFiles();
+    app.UseStaticFiles();
+}
+app.UseRouting();
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -85,6 +97,11 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// SPA fallback for client-side routes. API, SCIM and OpenAPI paths are excluded so a wrong
+// API URL still yields a 404 rather than index.html.
+if (serveSpa)
+    app.MapFallbackToFile("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", "index.html");
 
 app.MapScim("/v2"); // Authentik SCIM provider points here; uses its own ScimToken scheme
 

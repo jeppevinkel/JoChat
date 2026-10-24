@@ -22,4 +22,18 @@
       <ProjectReference Include="..\JoChat.Providers\JoChat.Providers.csproj" />
     </ItemGroup>
 
+    <!-- Build the web client into wwwroot on publish so a single deployable serves API + SPA.
+         Run `dotnet publish` from a machine with Node; `dotnet build` is unaffected. -->
+    <PropertyGroup>
+        <SpaRoot>$(MSBuildThisFileDirectory)..\JoChat.Web\</SpaRoot>
+    </PropertyGroup>
+    <Target Name="PublishSpa" BeforeTargets="ComputeFilesToPublish">
+        <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
+        <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --outDir &quot;$(MSBuildThisFileDirectory)wwwroot&quot; --emptyOutDir" />
+        <ItemGroup>
+            <_SpaFiles Include="$(MSBuildThisFileDirectory)wwwroot\**" />
+            <ResolvedFileToPublish Include="@(_SpaFiles)" RelativePath="wwwroot\%(RecursiveDir)%(Filename)%(Extension)" CopyToPublishDirectory="PreserveNewest" />
+        </ItemGroup>
+    </Target>
+
 </Project>
