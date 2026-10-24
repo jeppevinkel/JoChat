@@ -166,7 +166,8 @@ api.MapImageEndpoints();
 api.MapTtsEndpoints();
 
 app.MapGroup("/api/admin").RequireAuthorization(Policies.SuperAdmin)
-    .MapAdminEndpoints(); // empty for now
+    .MapAdminEndpoints()
+    .MapAdminOversightEndpoints();
 
 app.Run();
 

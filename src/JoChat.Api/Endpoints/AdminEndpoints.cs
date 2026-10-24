@@ -1,4 +1,5 @@
 using JoChat.Core.Entities;
+using JoChat.Core.Enums;
 using JoChat.Core.Options;
 using JoChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -103,6 +104,11 @@ public static class AdminEndpoints
                     LastSeen = p != null ? p.LastSeenAt : null,
                     HasAccess = db.ScimGroups.Any(g => g.DisplayName == userGroup && g.Members.Any(m => m.Value == x.s.Id)),
                     IsAdmin = db.ScimGroups.Any(g => g.DisplayName == adminGroup && g.Members.Any(m => m.Value == x.s.Id)),
+                    // Activity at a glance; zero/null for people who never signed in.
+                    Chats = p != null ? db.Chats.Count(c => c.OwnerId == p.Id) : 0,
+                    MessagesSent = p != null ? db.Messages.Count(m => m.Chat!.OwnerId == p.Id && m.Role == MessageRole.User) : 0,
+                    Personas = p != null ? db.Personas.Count(q => q.OwnerId == p.Id) : 0,
+                    LastChatAt = p != null ? db.Chats.Where(c => c.OwnerId == p.Id).Max(c => (DateTime?)c.UpdatedAt) : null,
                 })
                 .OrderBy(u => u.UserName)
                 .ToListAsync(ct);

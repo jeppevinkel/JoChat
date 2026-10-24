@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<ModelDefinition> ModelDefinitions => Set<ModelDefinition>();
     public DbSet<UsageRecord> UsageRecords => Set<UsageRecord>();
     public DbSet<ChatShare> ChatShares => Set<ChatShare>();
+    public DbSet<AdminAuditEntry> AdminAuditEntries => Set<AdminAuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -71,5 +72,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 
         b.Entity<UsageRecord>(e =>
             e.HasIndex(x => new { x.UserId, x.CreatedAt }));
+
+        b.Entity<AdminAuditEntry>(e =>
+        {
+            e.Property(x => x.Action).HasMaxLength(32);
+            e.HasIndex(x => x.CreatedAt);
+        });
     }
 }
