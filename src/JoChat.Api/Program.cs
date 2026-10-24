@@ -130,10 +130,26 @@ if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Databas
 // Liveness for container orchestration; anonymous and cheap.
 app.MapGet("/healthz", () => Results.Text("ok")).AllowAnonymous();
 
-// SPA fallback for client-side routes. API, SCIM and OpenAPI paths are excluded so a wrong
-// API URL still yields a 404 rather than index.html.
+// SPA fallback for client-side routes. API, SCIM and OpenAPI paths are excluded, and clients
+// that don't accept HTML (SCIM provisioners, API tooling) get a 404 instead of index.html, so a
+// misconfigured URL fails visibly rather than returning a page.
 if (serveSpa)
-    app.MapFallbackToFile("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", "index.html");
+{
+    var indexHtml = Path.Combine(spaRoot, "index.html");
+    app.MapFallback("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", async context =>
+    {
+        var accept = context.Request.GetTypedHeaders().Accept;
+        var wantsHtml = accept.Count == 0 || accept.Any(a =>
+            a.MediaType.Equals("text/html", StringComparison.OrdinalIgnoreCase) || a.MediaType.Equals("*/*", StringComparison.Ordinal));
+        if (!wantsHtml)
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.SendFileAsync(indexHtml);
+    }).AllowAnonymous();
+}
 
 app.MapScim("/v2"); // Authentik SCIM provider points here; uses its own ScimToken scheme
 app.MapConfigEndpoints();
