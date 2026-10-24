@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo } from 'react'
-import { Route, Routes } from 'react-router'
+import { Navigate, Route, Routes, useLocation } from 'react-router'
 import { useAuth } from 'react-oidc-context'
 import { useApi } from '@/lib/api'
 import { AttachmentSourceContext } from '@/lib/attachment-source'
@@ -43,9 +43,24 @@ export default function App() {
   )
 }
 
+// /login starts the OIDC redirect immediately. Linked from an Authentik launcher it signs the
+// user in without a click, since Authentik already has a session for them.
+function AutoLogin() {
+  const auth = useAuth()
+  useEffect(() => {
+    if (auth.isLoading || auth.isAuthenticated || auth.activeNavigator) return
+    localStorage.setItem(SIGNED_IN_KEY, '1')
+    void auth.signinRedirect({ state: '/' })
+  }, [auth])
+  if (auth.isAuthenticated) return <Navigate to="/" replace />
+  if (auth.error) return <Login />
+  return <div className="text-muted-foreground flex h-full items-center justify-center text-sm">Signing in…</div>
+}
+
 function AuthenticatedApp() {
   const auth = useAuth()
   const api = useApi()
+  const location = useLocation()
   const resolver = useMemo(() => (id: string) => api.attachmentBlobUrl(id), [api])
 
   useEffect(() => {
@@ -61,6 +76,7 @@ function AuthenticatedApp() {
     void auth.signinRedirect()
   }, [shouldResume, auth])
 
+  if (location.pathname === '/login') return <AutoLogin />
   if (auth.isLoading || shouldResume) {
     return <div className="text-muted-foreground flex h-full items-center justify-center text-sm">Loading…</div>
   }
