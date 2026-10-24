@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type UIEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent, type TouchEvent, type UIEvent, type WheelEvent } from 'react'
 import { useParams } from 'react-router'
 import { ArrowDown, ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -14,8 +14,9 @@ interface PendingUpload {
   error?: string
 }
 
-// How close to the bottom (px) still counts as "at the bottom" for auto-scroll.
-const ATTACH_THRESHOLD = 48
+// Re-attach to auto-scroll only when genuinely at the bottom (px); detaching is driven by
+// user intent (wheel/touch/keys) so it wins even while content is streaming in fast.
+const REATTACH_THRESHOLD = 16
 
 // Keyed by chat id so switching chats remounts with fresh state instead of resetting in an effect.
 export function ChatView() {
@@ -36,16 +37,32 @@ function ChatPane({ chatId }: { chatId: string }) {
   const [text, setText] = useState('')
   const [uploads, setUploads] = useState<PendingUpload[]>([])
   const [streaming, setStreaming] = useState(false)
-  const [attached, setAttached] = useState(true)
+  const [attached, setAttachedState] = useState(true)
+  const attachedRef = useRef(true) // read by the auto-scroll effect without waiting for a render
+  const setAttached = (v: boolean) => {
+    attachedRef.current = v
+    setAttachedState(v)
+  }
+  const loadedRef = useRef(false)
+  const streamingRef = useRef(false)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const touchYRef = useRef<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Mirrors of state for the unmount cleanup, which can't read current state directly.
+  const messagesRef = useRef<DisplayMessage[]>([])
+  useEffect(() => {
+    messagesRef.current = messages
+    streamingRef.current = streaming
+  }, [messages, streaming])
 
   const load = useCallback(async () => {
     try {
       const list = await api.messages(chatId)
       setMessages(list.map((m) => ({ id: m.id, role: m.role, content: m.content, attachments: m.attachments })))
       setLoadError(null)
+      loadedRef.current = true
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : String(e))
     }
@@ -54,20 +71,49 @@ function ChatPane({ chatId }: { chatId: string }) {
   useEffect(() => {
     // oxlint-disable-next-line react/set-state-in-effect -- async fetch; setState only runs after the await
     void load()
-    return () => abortRef.current?.abort()
-  }, [load])
+    return () => {
+      abortRef.current?.abort()
+      // A chat that was opened but never used is just clutter: drop it on the way out.
+      if (loadedRef.current && messagesRef.current.length === 0 && !streamingRef.current) {
+        api.deleteChat(chatId).then(() => refresh()).catch(() => {})
+      }
+    }
+  }, [load, api, chatId, refresh])
 
-  // Auto-scroll follows new content only while the user is at the bottom. Scrolling up
-  // detaches; scrolling back to the bottom (or sending a message) re-attaches.
+  // Auto-scroll follows new content only while attached. Detaching is decided from user
+  // intent (wheel up, touch drag down, PageUp/ArrowUp/Home) rather than from the resulting
+  // scroll position, so it takes effect immediately even while the reply streams in fast;
+  // re-attaching happens when the user actually reaches the bottom (or sends a message).
   const scrollToBottom = (behavior: ScrollBehavior = 'auto') =>
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior })
   useEffect(() => {
-    if (attached) scrollToBottom()
-  }, [messages, attached])
+    if (attachedRef.current) scrollToBottom()
+  }, [messages])
+  const detach = () => {
+    if (attachedRef.current) setAttached(false)
+  }
+  const onWheel = (e: WheelEvent<HTMLDivElement>) => {
+    if (e.deltaY < 0) detach()
+  }
+  const onTouchStart = (e: TouchEvent<HTMLDivElement>) => {
+    touchYRef.current = e.touches[0]?.clientY ?? null
+  }
+  const onTouchMove = (e: TouchEvent<HTMLDivElement>) => {
+    const y = e.touches[0]?.clientY
+    if (y !== undefined && touchYRef.current !== null && y > touchYRef.current + 4) detach()
+  }
+  const onScrollKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowUp' || e.key === 'PageUp' || e.key === 'Home') detach()
+  }
   const onScroll = (e: UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight
-    setAttached(distance <= ATTACH_THRESHOLD)
+    if (distance <= REATTACH_THRESHOLD) {
+      if (!attachedRef.current) setAttached(true)
+    } else if (attachedRef.current && !streamingRef.current) {
+      // Scrollbar drag or similar while idle: the position alone is enough to detach.
+      setAttached(false)
+    }
   }
 
   // Read-aloud uses the persona's configured voice; without one the button stays hidden.
@@ -247,7 +293,16 @@ function ChatPane({ chatId }: { chatId: string }) {
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <div className="relative min-h-0 flex-1">
-        <div ref={scrollRef} onScroll={onScroll} className="h-full overflow-y-auto">
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          onWheel={onWheel}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onKeyDown={onScrollKey}
+          tabIndex={-1}
+          className="h-full overflow-y-auto outline-none"
+        >
           <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
             {loadError && <p className="text-destructive text-sm">{loadError}</p>}
             {messages.length === 0 && !loadError && (
@@ -272,14 +327,14 @@ function ChatPane({ chatId }: { chatId: string }) {
         {!attached && (
           <Button
             type="button"
-            variant="outline"
+            variant="secondary"
             size="icon"
             aria-label="Jump to latest"
             onClick={() => {
               setAttached(true)
               scrollToBottom('smooth')
             }}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full shadow"
+            className="bg-background hover:bg-muted absolute right-4 bottom-3 z-10 rounded-full border shadow-md"
           >
             <ArrowDown />
           </Button>
