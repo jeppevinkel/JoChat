@@ -15,7 +15,7 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.9");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
             modelBuilder.Entity("JoChat.Core.Entities.Attachment", b =>
                 {
@@ -379,6 +379,9 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
                     b.Property<DateTimeOffset>("Created")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTimeOffset?>("DeletedAt")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DisplayName")
                         .HasColumnType("TEXT");
 
@@ -394,6 +397,9 @@ namespace JoChat.Infrastructure.Migrations.Sqlite
 
                     b.Property<string>("GivenName")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("INTEGER");
 
                     b.Property<DateTimeOffset>("LastModified")
                         .HasColumnType("TEXT");
