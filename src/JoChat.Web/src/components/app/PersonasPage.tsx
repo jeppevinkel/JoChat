@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Pencil, Plus, Trash2, Users } from 'lucide-react'
+import { Pencil, Plus, Star, Trash2, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ApiError, useApi, type Persona } from '@/lib/api'
+import { useDefaultPersona } from '@/lib/use-me'
+import { cn } from '@/lib/utils'
 import { PageHeader, PageTitle } from './PageHeader'
 import { PersonaDialog } from './PersonaDialog'
 
@@ -11,6 +13,7 @@ export default function PersonasPage() {
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Persona | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const { defaultPersonaId, setDefaultPersona } = useDefaultPersona()
 
   const load = useCallback(async () => {
     try {
@@ -38,9 +41,18 @@ export default function PersonasPage() {
     if (!confirm(`Delete persona "${p.name}"?`)) return
     try {
       await api.deletePersona(p.id)
+      if (p.id === defaultPersonaId) await setDefaultPersona(null)
       await load()
     } catch (e) {
       setError(e instanceof ApiError && e.status === 409 ? `"${p.name}" is used by existing chats and can't be deleted.` : String(e))
+    }
+  }
+
+  const toggleDefault = async (p: Persona) => {
+    try {
+      await setDefaultPersona(p.id === defaultPersonaId ? null : p.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
     }
   }
 
@@ -65,6 +77,9 @@ export default function PersonasPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-heading truncate text-lg font-semibold">{p.name}</span>
+                      {p.id === defaultPersonaId && (
+                        <span className="bg-accent-ink/20 text-foreground rounded-sm px-1.5 py-0.5 text-[0.68rem] font-semibold tracking-wider uppercase">Default</span>
+                      )}
                       {p.isShared && (
                         <span className="text-muted-foreground inline-flex items-center gap-1 text-xs" title="Shared">
                           <Users className="size-3" />
@@ -84,16 +99,29 @@ export default function PersonasPage() {
                     {p.description && <p className="mt-1 text-sm">{p.description}</p>}
                     <p className="text-muted-foreground mt-2 line-clamp-3 text-xs whitespace-pre-wrap">{p.systemPrompt}</p>
                   </div>
-                  {p.isOwner && (
-                    <div className="-mt-1 -mr-1 flex shrink-0 gap-1">
-                      <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEdit(p)}>
-                        <Pencil />
-                      </Button>
-                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => remove(p)}>
-                        <Trash2 />
-                      </Button>
-                    </div>
-                  )}
+                  <div className="-mt-1 -mr-1 flex shrink-0 gap-1">
+                    {/* Any usable persona can be the default, including ones shared with you. */}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-pressed={p.id === defaultPersonaId}
+                      aria-label={p.id === defaultPersonaId ? 'Stop using as default for new chats' : 'Use as default for new chats'}
+                      title={p.id === defaultPersonaId ? 'Default for new chats (click to unset)' : 'Use as default for new chats'}
+                      onClick={() => void toggleDefault(p)}
+                    >
+                      <Star className={cn(p.id === defaultPersonaId && 'fill-accent-ink text-accent-ink')} />
+                    </Button>
+                    {p.isOwner && (
+                      <>
+                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => openEdit(p)}>
+                          <Pencil />
+                        </Button>
+                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => remove(p)}>
+                          <Trash2 />
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </li>
             ))}

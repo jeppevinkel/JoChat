@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label'
 import { useApi, type ModelDefinition, type Persona, type PersonaRequest } from '@/lib/api'
 import { guardedClose } from '@/lib/guarded-close'
 import { useChats } from '@/lib/use-chats'
+import { useDefaultPersona } from '@/lib/use-me'
 import { emptyPersona, isValidPersona, selectClass } from '@/lib/persona'
 import { PersonaForm } from './PersonaForm'
 
@@ -20,15 +21,18 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const api = useApi()
   const navigate = useNavigate()
   const { chats, refresh } = useChats()
-  // Read when the dialog opens; a ref so a chat-list refresh doesn't refetch and reset the form.
-  const chatsRef = useRef(chats)
+  const { defaultPersonaId, setDefaultPersona } = useDefaultPersona()
+  // Read when the dialog opens; a ref so a chat-list refresh or a newly saved default doesn't
+  // refetch and reset the form.
+  const preselectRef = useRef({ chats, defaultPersonaId })
   useEffect(() => {
-    chatsRef.current = chats
-  }, [chats])
+    preselectRef.current = { chats, defaultPersonaId }
+  }, [chats, defaultPersonaId])
   const [personas, setPersonas] = useState<Persona[] | null>(null)
   const [models, setModels] = useState<ModelDefinition[]>([])
   const [personaId, setPersonaId] = useState('')
   const [draft, setDraft] = useState<PersonaRequest | null>(null) // non-null = inline create mode
+  const [makeDefault, setMakeDefault] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,8 +45,10 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         setError(null)
         setPersonas(p)
         setModels(m)
-        // Default to the persona of the most recent chat: usually the one you want to continue with.
-        const recent = p.find((x) => x.id === chatsRef.current[0]?.personaId)?.id
+        // Preselect the default persona (if it couldn't be used directly, e.g. a failed create), else
+        // the one from the most recent chat: usually the one you want to continue with.
+        const { chats: recentChats, defaultPersonaId: preferred } = preselectRef.current
+        const recent = p.find((x) => x.id === (preferred ?? recentChats[0]?.personaId))?.id
         setPersonaId((cur) => (cur && p.some((x) => x.id === cur) ? cur : recent ?? p[0]?.id ?? ''))
         // No personas yet: go straight to the create form, since a chat can't exist without one.
         setDraft(p.length === 0 ? emptyPersona(m) : null)
@@ -59,6 +65,8 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     setBusy(true)
     setError(null)
     try {
+      // Saved first: from now on "New conversation" skips this dialog and uses it directly.
+      if (makeDefault) await setDefaultPersona(id)
       const { id: chatId } = await api.createChat(id)
       await refresh()
       onOpenChange(false)
@@ -76,6 +84,7 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     setError(null)
     try {
       const persona = await api.createPersona(draft)
+      if (makeDefault) await setDefaultPersona(persona.id)
       setPersonas((p) => [...(p ?? []), persona])
       await start(persona.id)
     } catch (e) {
@@ -115,6 +124,11 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             </Link>
           </div>
         )}
+
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" className="accent-primary size-4" checked={makeDefault} onChange={(e) => setMakeDefault(e.target.checked)} />
+          Start new chats with this persona without asking
+        </label>
 
         {error && <p className="text-destructive text-sm">{error}</p>}
 

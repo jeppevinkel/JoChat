@@ -16,7 +16,8 @@ import { useParams } from 'react-router'
 import { ArrowDown, ImagePlus, Loader2, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { useApi, type ChatStreamEvent, type ToolStep } from '@/lib/api'
+import { useApi, type ChatStreamEvent, type Persona, type ToolStep } from '@/lib/api'
+import { selectClass } from '@/lib/persona'
 import { fenced, insideFence, looksLikeCode } from '@/lib/code-paste'
 import { useChats } from '@/lib/use-chats'
 import { messageImages, useImageGallery, type GalleryItem } from '@/lib/use-image-gallery'
@@ -51,7 +52,6 @@ function ChatPane({ chatId }: { chatId: string }) {
   const api = useApi()
   const { chats, refresh } = useChats()
   const [messages, setMessages] = useState<DisplayMessage[]>([])
-  const [tts, setTts] = useState<TtsDefaults | null>(null)
   const [imageMode, setImageMode] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -142,7 +142,6 @@ function ChatPane({ chatId }: { chatId: string }) {
     }
   }
 
-  // Read-aloud uses the persona's configured voice; without one the button stays hidden.
   const summary = chats.find((c) => c.id === chatId)
   const title = summary?.title
   useEffect(() => {
@@ -152,24 +151,37 @@ function ChatPane({ chatId }: { chatId: string }) {
       document.title = 'JoChat'
     }
   }, [title])
-  const personaId = summary?.personaId
+  // The personas you can use: read-aloud takes the chat persona's voice (no voice, no button), and
+  // an empty chat offers the list so you can pick who to talk to before the first message.
+  const [personas, setPersonas] = useState<Persona[] | null>(null)
+  const [personaBusy, setPersonaBusy] = useState(false)
   useEffect(() => {
-    if (!personaId) return
     let cancelled = false
     api
       .personas()
-      .then((list) => {
-        if (cancelled) return
-        const p = list.find((x) => x.id === personaId)
-        setTts(p?.defaultTtsProvider && p.defaultTtsVoiceId ? { provider: p.defaultTtsProvider, voiceId: p.defaultTtsVoiceId } : null)
-      })
-      .catch(() => {
-        if (!cancelled) setTts(null)
-      })
+      .then((list) => !cancelled && setPersonas(list))
+      .catch(() => !cancelled && setPersonas([]))
     return () => {
       cancelled = true
     }
-  }, [api, personaId])
+  }, [api])
+  const persona = personas?.find((p) => p.id === summary?.personaId)
+  const tts = useMemo<TtsDefaults | null>(
+    () => (persona?.defaultTtsProvider && persona.defaultTtsVoiceId ? { provider: persona.defaultTtsProvider, voiceId: persona.defaultTtsVoiceId } : null),
+    [persona],
+  )
+  const changePersona = async (personaId: string) => {
+    setPersonaBusy(true)
+    setActionError(null)
+    try {
+      await api.setChatPersona(chatId, personaId)
+      await refresh()
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setPersonaBusy(false)
+    }
+  }
 
   const addFiles = (files: File[]) => {
     for (const file of files.filter((f) => IMAGE_TYPES.includes(f.type))) {
@@ -396,7 +408,19 @@ function ChatPane({ chatId }: { chatId: string }) {
             <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-8">
               {loadError && <p className="text-destructive text-sm">{loadError}</p>}
               {messages.length === 0 && !loadError && (
-                <p className="text-muted-foreground font-heading py-16 text-center text-lg italic">Say something to get started.</p>
+                <div className="grid justify-items-center gap-3 py-16 text-center">
+                  <p className="text-muted-foreground font-heading text-lg italic">Say something to get started.</p>
+                  {summary && personas && (
+                    <EmptyChatPersona
+                      personas={personas}
+                      current={persona}
+                      currentId={summary.personaId}
+                      currentName={summary.personaName}
+                      disabled={personaBusy || streaming}
+                      onChange={(id) => void changePersona(id)}
+                    />
+                  )}
+                </div>
               )}
               {messages.map((m) => (
                 <MessageBubble
@@ -549,6 +573,54 @@ function UploadStrip({ uploads, onRemove }: { uploads: PendingUpload[]; onRemove
           {u.file.name}: {u.error}
         </p>
       ))}
+    </div>
+  )
+}
+
+// Who you're about to talk to. Changeable until the first message is sent; switching personas
+// mid-conversation isn't supported (yet), so after that the persona is fixed.
+function EmptyChatPersona({
+  personas,
+  current,
+  currentId,
+  currentName,
+  disabled,
+  onChange,
+}: {
+  personas: Persona[]
+  current: Persona | undefined
+  currentId: string
+  currentName: string
+  disabled: boolean
+  onChange: (personaId: string) => void
+}) {
+  return (
+    <div className="grid max-w-sm justify-items-center gap-1.5">
+      {personas.length > 1 ? (
+        <label className="text-muted-foreground flex items-center gap-2 text-sm">
+          Talking to
+          <select
+            className={cn(selectClass, 'text-foreground w-auto max-w-56 font-medium pointer-coarse:h-10')}
+            value={currentId}
+            disabled={disabled}
+            onChange={(e) => onChange(e.target.value)}
+          >
+            {/* A persona that is no longer usable (e.g. unshared) still shows as the current one. */}
+            {!current && <option value={currentId}>{currentName}</option>}
+            {personas.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.isShared && !p.isOwner ? ' (shared)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="text-muted-foreground text-sm">
+          Talking to <span className="text-foreground font-medium">{currentName}</span>
+        </p>
+      )}
+      {current?.description && <p className="text-muted-foreground text-xs">{current.description}</p>}
     </div>
   )
 }
