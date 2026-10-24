@@ -17,6 +17,7 @@ export function Login() {
         <Button onClick={() => auth.signinRedirect()} disabled={auth.isLoading}>
           {auth.isLoading ? 'Signing in…' : 'Sign in'}
         </Button>
+        <p className="text-muted-foreground text-xs">Conversations may be reviewed by administrators for moderation.</p>
       </div>
     </div>
   )
