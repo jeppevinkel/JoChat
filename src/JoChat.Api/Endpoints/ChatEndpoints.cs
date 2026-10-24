@@ -1,4 +1,6 @@
+using System.Net.ServerSentEvents;
 using JoChat.Api.Services;
+using JoChat.Core.Models;
 using JoChat.Core.Abstractions;
 using JoChat.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -64,11 +66,13 @@ public static class ChatEndpoints
         });
 
         // The core loop: post a user message, stream the assistant reply via SSE.
+        // Each event is named after its kind (text/completed/error) so clients can
+        // switch on `event:` instead of sniffing the JSON shape.
         group.MapPost("/chats/{id:guid}/messages",
             (Guid id, SendMessageRequest req, IChatStreamingService chatService, CancellationToken ct)
                 => TypedResults.ServerSentEvents(
-                    chatService.SendAndStreamAsync(id, req.Text, req.AttachmentIds, ct),
-                    eventType: "message"));
+                    chatService.SendAndStreamAsync(id, req.Text, req.AttachmentIds, ct)
+                        .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))));
 
         group.MapDelete("/chats/{id:guid}", async (Guid id, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
@@ -91,6 +95,14 @@ public static class ChatEndpoints
         });
         return group;
     }
+
+    private static string SseEventName(ChatStreamEvent e) => e switch
+    {
+        ChatStreamEvent.TextDelta => "text",
+        ChatStreamEvent.Completed => "completed",
+        ChatStreamEvent.Error => "error",
+        _ => "message",
+    };
 }
 
 public record CreateChatRequest(Guid PersonaId, string? Title);
