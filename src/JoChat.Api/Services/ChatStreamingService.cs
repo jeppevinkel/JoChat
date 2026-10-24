@@ -21,9 +21,6 @@ public class ChatStreamingService(
     IServiceProvider services,
     ILogger<ChatStreamingService> logger) : IChatStreamingService
 {
-    private const string DefaultChatTitle = "New chat";
-    private const int MaxTitleLength = 60;
-
     public async IAsyncEnumerable<ChatStreamEvent> SendAndStreamAsync(
         Guid chatId, string text, List<Guid>? attachmentIds,
         [EnumeratorCancellation] CancellationToken ct)
@@ -72,8 +69,8 @@ public class ChatStreamingService(
         // as Modified rather than Added, which skips the INSERT and breaks the attachment FK.
         db.Messages.Add(userMessage);
         chat.Messages.Add(userMessage);
-        if (chat.Title == DefaultChatTitle)
-            chat.Title = DeriveTitle(text);
+        if (chat.Title == ChatTitles.Default)
+            chat.Title = ChatTitles.Derive(text);
         chat.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -167,12 +164,5 @@ public class ChatStreamingService(
             result.Add(new ChatRequestImage(a.MimeType, buffer.ToArray()));
         }
         return result;
-    }
-
-    private static string DeriveTitle(string text)
-    {
-        var firstLine = text.Trim().Split('\n', 2)[0].Trim();
-        if (firstLine.Length == 0) return DefaultChatTitle;
-        return firstLine.Length <= MaxTitleLength ? firstLine : firstLine[..MaxTitleLength].TrimEnd() + "…";
     }
 }

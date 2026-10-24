@@ -31,7 +31,7 @@ public static class ChatEndpoints
 
             var chat = new Core.Entities.Chat
             {
-                Id = Guid.NewGuid(), Title = req.Title ?? "New chat",
+                Id = Guid.NewGuid(), Title = req.Title ?? ChatTitles.Default,
                 PersonaId = req.PersonaId, OwnerId = user.Id,
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             };
