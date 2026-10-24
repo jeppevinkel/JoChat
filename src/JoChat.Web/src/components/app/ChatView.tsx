@@ -97,15 +97,24 @@ function ChatPane({ chatId }: { chatId: string }) {
         list.map((m) => (m.id === assistantId ? (typeof patch === 'function' ? patch(m) : { ...m, ...patch }) : m)),
       )
 
+    let failure: string | null = null
+    let partial = ''
     try {
       for await (const evt of api.sendMessage(chatId, userMsg.content, attachmentIds, controller.signal)) {
-        if (evt.type === 'text') patchAssistant((m) => ({ ...m, content: m.content + evt.text }))
-        else if (evt.type === 'error') patchAssistant({ error: evt.message, streaming: false })
-        else if (evt.type === 'completed') patchAssistant({ streaming: false })
+        if (evt.type === 'text') {
+          partial += evt.text
+          patchAssistant((m) => ({ ...m, content: m.content + evt.text }))
+        } else if (evt.type === 'error') {
+          failure = evt.message
+          patchAssistant({ error: evt.message, streaming: false })
+        } else if (evt.type === 'completed') {
+          patchAssistant({ streaming: false })
+        }
       }
     } catch (err) {
       if (!controller.signal.aborted) {
-        patchAssistant({ error: err instanceof Error ? err.message : String(err), streaming: false })
+        failure = err instanceof Error ? err.message : String(err)
+        patchAssistant({ error: failure, streaming: false })
       }
     } finally {
       patchAssistant({ streaming: false })
@@ -113,8 +122,17 @@ function ChatPane({ chatId }: { chatId: string }) {
       abortRef.current = null
       previewUrls.forEach((u) => URL.revokeObjectURL(u))
       // Pull the persisted versions (real ids, attachment refs) and the possibly-renamed chat.
-      void load()
+      await load()
       void refresh()
+      // A failed reply is never persisted, so re-attach the error after the reload or it
+      // silently disappears.
+      if (failure) {
+        const message = failure
+        setMessages((list) => [
+          ...list,
+          { id: assistantId, role: 'Assistant', content: partial, attachments: [], error: message },
+        ])
+      }
     }
   }
 
