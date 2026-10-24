@@ -1,5 +1,5 @@
 import { Suspense, lazy, useState, type KeyboardEvent } from 'react'
-import { Check, Globe, Loader2, Pencil, RefreshCw, Search, Square, Terminal, Trash2, Volume2, Wrench, X } from 'lucide-react'
+import { Check, Download, Globe, Loader2, Pencil, RefreshCw, Search, Square, Terminal, Trash2, Volume2, Wrench, X } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type AttachmentRef, type ToolStep } from '@/lib/api'
 import { play, stop, usePlayer } from '@/lib/tts-player'
@@ -45,7 +45,8 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
   const persisted = !message.id.startsWith('local-')
   const canSpeak = !isUser && !!tts && !message.streaming && persisted && message.content.length > 0
   const canAct = persisted && !message.streaming && !busy && !!actions
-  const images = message.attachments.filter((a) => a.kind !== 'TtsAudio')
+  const images = message.attachments.filter((a) => a.kind === 'UploadedImage' || a.kind === 'GeneratedImage')
+  const files = message.attachments.filter((a) => a.kind === 'GeneratedFile')
   const cachedAudio = message.attachments.find((a) => a.kind === 'TtsAudio')
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(message.content)
@@ -147,9 +148,57 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
             )}
           </div>
         )}
+        {files.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {files.map((f) => (
+              <li key={f.id}>
+                <FileChip attachment={f} />
+              </li>
+            ))}
+          </ul>
+        )}
         {message.error && <p className="text-destructive mt-2 text-xs">{message.error}</p>}
       </div>
     </div>
+  )
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Files the model produced (code execution output); downloaded through the authenticated API.
+function FileChip({ attachment }: { attachment: AttachmentRef }) {
+  const api = useApi()
+  const [busy, setBusy] = useState(false)
+  const name = attachment.fileName ?? 'file'
+  const download = async () => {
+    setBusy(true)
+    try {
+      const url = await api.attachmentBlobUrl(attachment.id)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={download}
+      disabled={busy}
+      className="bg-background text-foreground inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs shadow-xs disabled:opacity-50"
+      title={`${name} · ${formatBytes(attachment.sizeBytes)}`}
+    >
+      {busy ? <Loader2 className="size-3 animate-spin" /> : <Download className="size-3" />}
+      <span className="max-w-48 truncate">{name}</span>
+      <span className="text-muted-foreground">{formatBytes(attachment.sizeBytes)}</span>
+    </button>
   )
 }
 

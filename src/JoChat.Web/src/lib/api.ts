@@ -11,8 +11,10 @@ export interface ChatSummary {
 
 export interface AttachmentRef {
   id: string
-  kind: 'UploadedImage' | 'GeneratedImage' | 'TtsAudio'
+  kind: 'UploadedImage' | 'GeneratedImage' | 'TtsAudio' | 'GeneratedFile'
   mimeType: string
+  fileName: string | null
+  sizeBytes: number
   width: number | null
   height: number | null
 }
