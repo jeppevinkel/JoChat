@@ -25,7 +25,7 @@ public class OpenAiOptions
 {
     public const string Section = "OpenAi";
     public required string ApiKey { get; set; }
-    public string ImageModel { get; set; } = "gpt-image-1";
+    public string ImageModel { get; set; } = "gpt-image-2";
     public string TtsModel { get; set; } = "gpt-4o-mini-tts";
 }
 
