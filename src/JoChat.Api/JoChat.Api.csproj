@@ -4,6 +4,7 @@
         <TargetFramework>net10.0</TargetFramework>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
+        <UserSecretsId>jochat-api-0f6527a0-5f36-494c-b914-3d930c84094e</UserSecretsId>
     </PropertyGroup>
 
     <ItemGroup>

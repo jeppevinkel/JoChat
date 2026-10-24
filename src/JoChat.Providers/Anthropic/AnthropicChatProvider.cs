@@ -17,8 +17,11 @@ public class AnthropicChatProvider : IChatCompletionProvider
 
     private readonly AnthropicClient _client;
 
+    private readonly bool _configured;
+
     public AnthropicChatProvider(HttpClient http, IOptions<AnthropicOptions> options)
     {
+        _configured = !string.IsNullOrWhiteSpace(options.Value.ApiKey);
         _client = new AnthropicClient
         {
             ApiKey = options.Value.ApiKey,
@@ -33,6 +36,13 @@ public class AnthropicChatProvider : IChatCompletionProvider
     public async IAsyncEnumerable<ChatStreamEvent> StreamCompletionAsync(
         ChatRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
+        if (!_configured)
+        {
+            yield return new ChatStreamEvent.Error(
+                "Anthropic API key is not configured (Anthropic:ApiKey). Set it via user secrets or environment.");
+            yield break;
+        }
+
         var parameters = BuildParams(request);
 
         long tokensIn = 0, tokensOut = 0;
