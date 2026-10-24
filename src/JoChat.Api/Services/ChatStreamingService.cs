@@ -66,10 +66,10 @@ public class ChatStreamingService(
             CreatedAt = DateTime.UtcNow,
             Attachments = attachments,
         };
-        // Added explicitly: entities discovered via navigation with a pre-set key are tracked
-        // as Modified rather than Added, which skips the INSERT and breaks the attachment FK.
+        // Added through the DbSet (an entity discovered only via navigation with a pre-set key is
+        // tracked as Modified, skipping the INSERT). EF's fix-up appends it to chat.Messages as well,
+        // so adding it to the collection too would duplicate it in the history sent to the model.
         db.Messages.Add(userMessage);
-        chat.Messages.Add(userMessage);
         if (chat.Title == ChatTitles.Default)
             chat.Title = ChatTitles.Derive(text);
         chat.UpdatedAt = DateTime.UtcNow;
