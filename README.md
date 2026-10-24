@@ -42,6 +42,9 @@ Ingress: the app listens on plain HTTP (8080) and expects TLS to terminate in fr
 Cloudflare Tunnel, attach the `cloudflared` container to the `jochat` network and point the public
 hostname at `http://jochat:8080`; register `https://<hostname>/` as a redirect URI on the Authentik
 provider and point its SCIM provider at `https://<hostname>/v2`. `X-Forwarded-*` headers are honoured.
+For an Authentik application launcher entry, link to `https://<hostname>/login`: it starts the
+sign-in redirect immediately, which is a silent round-trip for users already signed in to Authentik
+(a static link to the provider's authorize endpoint can't work with PKCE).
 
 Migrations run automatically on container start (`Database__MigrateOnStartup=true` is set in the
 image); the default model list is seeded into an empty database. Uploads, generated images and
