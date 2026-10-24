@@ -1,6 +1,7 @@
-import { Suspense, lazy, useEffect, useRef, useState } from 'react'
+import { Suspense, lazy } from 'react'
 import { Loader2, Square, Volume2 } from 'lucide-react'
 import { useApi, type AttachmentRef } from '@/lib/api'
+import { play, stop, usePlayer } from '@/lib/tts-player'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
 
@@ -24,7 +25,11 @@ export interface DisplayMessage {
 
 export function MessageBubble({ message, tts }: { message: DisplayMessage; tts?: TtsDefaults | null }) {
   const isUser = message.role === 'User'
-  const canSpeak = !isUser && !!tts && !message.streaming && message.content.length > 0
+  // Local placeholders (in-flight or failed replies) have no server id to synthesize from.
+  const persisted = !message.id.startsWith('local-')
+  const canSpeak = !isUser && !!tts && !message.streaming && persisted && message.content.length > 0
+  const images = message.attachments.filter((a) => a.kind !== 'TtsAudio')
+  const cachedAudio = message.attachments.find((a) => a.kind === 'TtsAudio')
   return (
     <div className={cn('group flex w-full', isUser ? 'justify-end' : 'justify-start')}>
       <div
@@ -33,14 +38,14 @@ export function MessageBubble({ message, tts }: { message: DisplayMessage; tts?:
           isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
         )}
       >
-        {canSpeak && <SpeakButton text={message.content} tts={tts} />}
-        {(message.previewUrls?.length || message.attachments.length) ? (
+        {canSpeak && <SpeakButton messageId={message.id} cachedAudioId={cachedAudio?.id} tts={tts} />}
+        {(message.previewUrls?.length || images.length) ? (
           <div className="mb-2 flex flex-wrap gap-2">
             {message.previewUrls?.map((u) => (
               <img key={u} src={u} alt="" className="max-h-48 rounded-md object-contain" />
             ))}
             {!message.previewUrls?.length &&
-              message.attachments.map((a) => (
+              images.map((a) => (
                 <AuthImage key={a.id} id={a.id} className="max-h-48 max-w-64" />
               ))}
           </div>
@@ -59,52 +64,32 @@ export function MessageBubble({ message, tts }: { message: DisplayMessage; tts?:
   )
 }
 
-function SpeakButton({ text, tts }: { text: string; tts: TtsDefaults }) {
+function SpeakButton({ messageId, cachedAudioId, tts }: { messageId: string; cachedAudioId?: string; tts: TtsDefaults }) {
   const api = useApi()
-  const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle')
-  const [error, setError] = useState<string | null>(null)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const { status, error } = usePlayer(messageId)
 
-  const stop = () => {
-    audioRef.current?.pause()
-    if (audioRef.current) URL.revokeObjectURL(audioRef.current.src)
-    audioRef.current = null
-    setState('idle')
-  }
-  useEffect(() => stop, [])
-
-  const play = async () => {
-    setState('loading')
-    setError(null)
-    try {
-      const url = await api.speak({ text, provider: tts.provider, voiceId: tts.voiceId })
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = stop
-      await audio.play()
-      setState('playing')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-      setState('idle')
-    }
-  }
+  const start = () =>
+    play(messageId, () =>
+      cachedAudioId
+        ? api.attachmentBlobUrl(cachedAudioId)
+        : api.speak({ messageId, provider: tts.provider, voiceId: tts.voiceId }),
+    )
 
   return (
     <div className="absolute -top-2 -right-2 flex items-center gap-1">
       {error && <span className="text-destructive bg-background rounded border px-1 text-xs shadow">{error}</span>}
       <button
         type="button"
-        aria-label={state === 'playing' ? 'Stop' : 'Read aloud'}
-        onClick={state === 'playing' ? stop : play}
-        disabled={state === 'loading'}
+        aria-label={status === 'playing' ? 'Stop' : 'Read aloud'}
+        onClick={status === 'idle' ? start : stop}
         className={cn(
           'bg-background text-foreground rounded-full border p-1 shadow transition-opacity',
-          state === 'idle' && 'opacity-0 group-hover:opacity-100 focus:opacity-100',
+          status === 'idle' && !error && 'opacity-0 group-hover:opacity-100 focus:opacity-100',
         )}
       >
-        {state === 'loading' ? (
+        {status === 'loading' ? (
           <Loader2 className="size-3.5 animate-spin" />
-        ) : state === 'playing' ? (
+        ) : status === 'playing' ? (
           <Square className="size-3.5" />
         ) : (
           <Volume2 className="size-3.5" />

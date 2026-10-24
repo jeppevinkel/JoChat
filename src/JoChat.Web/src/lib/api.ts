@@ -139,8 +139,9 @@ export function createApi(getToken: () => string | undefined) {
         body: JSON.stringify(body),
       }),
 
-    // Returns an object URL for the synthesized audio; caller revokes it.
-    speak: async (body: { text: string; provider: string; voiceId: string; modelId?: string }): Promise<string> => {
+    // Returns an object URL for the synthesized audio. With messageId the server caches the
+    // audio on the message, so later calls (or attachmentBlobUrl on the TtsAudio attachment) are free.
+    speak: async (body: { messageId: string; provider: string; voiceId: string; modelId?: string }): Promise<string> => {
       const res = await fetch('/api/tts/speak', {
         method: 'POST',
         headers: headers({ 'Content-Type': 'application/json' }),
