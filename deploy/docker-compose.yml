@@ -1,0 +1,51 @@
+# Production deployment: PostgreSQL + JoChat (API + web client in one image).
+# Copy .env.example to .env, fill it in, then: docker compose up -d
+# Ingress is expected from an existing cloudflared tunnel pointing at http://jochat:8080
+# (attach the tunnel container to the `jochat` network, or publish the port and point it at the host).
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jochat
+      POSTGRES_USER: jochat
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jochat -d jochat"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    networks: [jochat]
+
+  jochat:
+    image: ${JOCHAT_IMAGE:-ghcr.io/OWNER/jochat:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ConnectionStrings__Default: Host=postgres;Database=jochat;Username=jochat;Password=${POSTGRES_PASSWORD}
+      Oidc__Authority: ${OIDC_AUTHORITY:?}
+      Oidc__Audience: ${OIDC_CLIENT_ID:?}
+      Scim__Token: ${SCIM_TOKEN:?}
+      AuthorizationGroups__UserGroup: ${USER_GROUP:-jochat-users}
+      AuthorizationGroups__SuperAdminGroup: ${SUPERADMIN_GROUP:-jochat-superadmins}
+      Anthropic__ApiKey: ${ANTHROPIC_API_KEY:?}
+      OpenAi__ApiKey: ${OPENAI_API_KEY:-}
+      ElevenLabs__ApiKey: ${ELEVENLABS_API_KEY:-}
+    volumes:
+      - data:/app/data
+    # Uncomment to reach the app without the tunnel (e.g. for a reverse proxy on the host).
+    # ports:
+    #   - "8080:8080"
+    networks: [jochat]
+
+volumes:
+  postgres:
+  data:
+
+networks:
+  jochat:
+    name: jochat

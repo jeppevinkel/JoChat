@@ -22,14 +22,38 @@ Migrations: `dotnet ef migrations add <Name> -o Migrations/Postgres -p src/JoCha
 
 ## Production
 
-`dotnet publish src/JoChat.Api -c Release` builds the web client into `wwwroot` and produces
-one deployable that serves both the API and the SPA from a single origin. All settings are
-read from environment variables (ASP.NET Core maps `Section__Key` to `Section:Key`); nothing
-is baked into the web bundle — it fetches its public OIDC settings from `GET /api/config`.
+JoChat ships as one container image (API + web client) built by GitHub Actions and published to
+GHCR: pushes to `main` produce `ghcr.io/<owner>/jochat:main` and `:sha-<short>`; a tag `vX.Y.Z`
+produces `:X.Y.Z`, `:X.Y` and `:latest`. `deploy/docker-compose.yml` runs it with PostgreSQL.
+
+```sh
+# on the Docker host
+mkdir jochat && cd jochat
+curl -O https://raw.githubusercontent.com/<owner>/jochat/main/deploy/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/<owner>/jochat/main/deploy/.env.example
+$EDITOR .env                       # image, DB password, Authentik, API keys
+docker compose up -d
+```
+
+Cut a release with `git tag v1.0.0 && git push --tags`; update with `docker compose pull && docker compose up -d`.
+If the GHCR package is private, `docker login ghcr.io` on the host with a token that has `read:packages`.
+
+Ingress: the app listens on plain HTTP (8080) and expects TLS to terminate in front of it. With
+Cloudflare Tunnel, attach the `cloudflared` container to the `jochat` network and point the public
+hostname at `http://jochat:8080`; register `https://<hostname>/` as a redirect URI on the Authentik
+provider and point its SCIM provider at `https://<hostname>/v2`. `X-Forwarded-*` headers are honoured.
+
+Migrations run automatically on container start (`Database__MigrateOnStartup=true` is set in the
+image); the default model list is seeded into an empty database. Uploads, generated images and
+cached audio live in the `data` volume.
+
+All settings are environment variables (ASP.NET Core maps `Section__Key` to `Section:Key`); the
+compose file wires the ones below from `.env`. Nothing is baked into the web bundle — it fetches
+its public OIDC settings from `GET /api/config`.
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `ConnectionStrings__Default` | yes | PostgreSQL, e.g. `Host=db;Database=jochat;Username=jochat;Password=…` |
+| `ConnectionStrings__Default` | yes | PostgreSQL, e.g. `Host=postgres;Database=jochat;Username=jochat;Password=…` |
 | `Oidc__Authority` | yes | Authentik provider issuer, e.g. `https://auth.example.com/application/o/jo-chat/` |
 | `Oidc__Audience` | yes | Expected token audience — Authentik uses the OAuth client id |
 | `Oidc__ClientId` | no | Client id handed to the browser; defaults to `Oidc__Audience` |
@@ -39,15 +63,15 @@ is baked into the web bundle — it fetches its public OIDC settings from `GET /
 | `Anthropic__ApiKey` | yes | Chat models |
 | `OpenAi__ApiKey` | for images / OpenAI TTS | `OpenAi__ImageModel` (default `gpt-image-2`), `OpenAi__TtsModel` (default `gpt-4o-mini-tts`) |
 | `ElevenLabs__ApiKey` | for ElevenLabs TTS | |
-| `Storage__RootPath` | no | Directory for uploads, generated images and cached audio (default `data/files`); mount a volume |
+| `Storage__RootPath` | no | Directory for uploads, generated images and cached audio (image default `/app/data/files`) |
 | `Storage__MaxUploadBytes` | no | Upload cap (default 10 MiB) |
 | `RateLimits__ChatPerMinute` etc. | no | Per-user limits: `ChatPerMinute` 30, `ImagePerMinute` 6, `TtsPerMinute` 30, `UploadPerMinute` 30 |
-| `Cors__Origins__0` | only if the UI is on another origin | Not needed when the API serves the SPA |
-| `ASPNETCORE_URLS` | no | e.g. `http://0.0.0.0:8080` behind a reverse proxy |
+| `Database__MigrateOnStartup` | no | Apply migrations at startup (image default `true`) |
+| `ASPNETCORE_URLS` | no | Image default `http://0.0.0.0:8080` |
 
-Migrations are applied automatically only in Development; in production run
-`dotnet ef database update` (or start once with `ASPNETCORE_ENVIRONMENT=Development` against
-the target database) as part of the deploy.
+Without Docker, `dotnet publish src/JoChat.Api -c Release` still produces a single deployable with
+the web client in `wwwroot` (requires Node on the build machine); run migrations with
+`dotnet ef database update` or set `Database__MigrateOnStartup=true`.
 
 ## Layout
 

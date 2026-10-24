@@ -27,7 +27,7 @@
     <PropertyGroup>
         <SpaRoot>$(MSBuildThisFileDirectory)..\JoChat.Web\</SpaRoot>
     </PropertyGroup>
-    <Target Name="PublishSpa" BeforeTargets="ComputeFilesToPublish">
+    <Target Name="PublishSpa" BeforeTargets="ComputeFilesToPublish" Condition="'$(SkipSpaBuild)' != 'true'">
         <Exec WorkingDirectory="$(SpaRoot)" Command="npm ci" />
         <Exec WorkingDirectory="$(SpaRoot)" Command="npm run build -- --outDir &quot;$(MSBuildThisFileDirectory)wwwroot&quot; --emptyOutDir" />
         <ItemGroup>

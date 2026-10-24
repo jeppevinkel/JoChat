@@ -95,17 +95,18 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
 
-    // Auto-apply pending migrations locally so the dev database stays current.
+// Migrations apply automatically in Development and wherever Database:MigrateOnStartup is set
+// (the container image sets it); other environments run `dotnet ef database update` on deploy.
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 
-    // Personas can only target enabled ModelDefinitions, so give a fresh dev DB something to pick.
+    // Personas can only target enabled ModelDefinitions, so give an empty database something to pick.
     if (!db.ModelDefinitions.Any())
     {
         db.ModelDefinitions.AddRange(
@@ -116,7 +117,11 @@ if (app.Environment.IsDevelopment())
     }
 }
 
-app.UseHttpsRedirection();
+// No https redirection: TLS terminates at the tunnel/reverse proxy in front of the container.
+// ASPNETCORE_FORWARDEDHEADERS_ENABLED=true (set in the image) makes the app honour X-Forwarded-*.
+
+// Liveness for container orchestration; anonymous and cheap.
+app.MapGet("/healthz", () => Results.Text("ok")).AllowAnonymous();
 
 // SPA fallback for client-side routes. API, SCIM and OpenAPI paths are excluded so a wrong
 // API URL still yields a 404 rather than index.html.

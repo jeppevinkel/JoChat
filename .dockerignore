@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+src/JoChat.Api/wwwroot/
+src/JoChat.Api/data/
+*.db
+*.db-*
+.git/
+.idea/
+deploy/
