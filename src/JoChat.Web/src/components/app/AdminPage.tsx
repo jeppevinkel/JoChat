@@ -15,34 +15,38 @@ import { ApiError, useApi, type AdminModel, type AdminUser, type ModelDefinition
 import { guardedClose } from '@/lib/guarded-close'
 import { selectClass } from '@/lib/persona'
 import { cn } from '@/lib/utils'
+import { PageHeader, PageTitle } from './PageHeader'
 
 type Tab = 'models' | 'usage' | 'users'
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>('models')
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto flex max-w-4xl flex-col gap-4 px-4 py-6">
-        <div className="flex items-center justify-between">
-          <h1 className="font-heading text-xl font-semibold">Admin</h1>
-          <nav className="bg-muted flex gap-1 rounded-lg p-1 text-sm">
-            {(['models', 'usage', 'users'] as Tab[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={cn('rounded-md px-3 py-1 capitalize', tab === t && 'bg-background shadow-xs')}
-              >
-                {t}
-              </button>
-            ))}
-          </nav>
+    <>
+      <PageHeader>
+        <PageTitle>Admin</PageTitle>
+        <nav className="bg-muted flex shrink-0 gap-1 rounded-lg p-1 text-sm">
+          {(['models', 'usage', 'users'] as Tab[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setTab(t)}
+              aria-pressed={tab === t}
+              className={cn('rounded-md px-2.5 py-1 capitalize sm:px-3 pointer-coarse:py-1.5', tab === t && 'bg-background shadow-xs')}
+            >
+              {t}
+            </button>
+          ))}
+        </nav>
+      </PageHeader>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto flex max-w-4xl flex-col gap-4 px-3 py-4 sm:px-4 sm:py-6">
+          {tab === 'models' && <ModelsTab />}
+          {tab === 'usage' && <UsageTab />}
+          {tab === 'users' && <UsersTab />}
         </div>
-        {tab === 'models' && <ModelsTab />}
-        {tab === 'usage' && <UsageTab />}
-        {tab === 'users' && <UsersTab />}
       </div>
-    </div>
+    </>
   )
 }
 
@@ -94,7 +98,7 @@ function ModelsTab() {
 
   return (
     <section className="grid gap-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <p className="text-muted-foreground text-sm">Models available in the persona picker.</p>
         <Button size="sm" onClick={() => { setEditing(null); setOpen(true) }}>
           <Plus data-icon="inline-start" />
@@ -102,6 +106,7 @@ function ModelsTab() {
         </Button>
       </div>
       {error && <p className="text-destructive text-sm">{error}</p>}
+      <TableScroll>
       <table className="w-full text-sm">
         <thead className="text-muted-foreground text-left text-xs">
           <tr>
@@ -136,6 +141,7 @@ function ModelsTab() {
           ))}
         </tbody>
       </table>
+      </TableScroll>
       {models?.length === 0 && <p className="text-muted-foreground text-sm">No models defined.</p>}
       <ModelDialog open={open} onOpenChange={setOpen} model={editing} onSaved={() => void load()} />
     </section>
@@ -194,7 +200,7 @@ function ModelForm({ model, onSaved, onOpenChange, onDirtyChange }: { model: Adm
             <Label htmlFor="m-name">Display name</Label>
             <Input id="m-name" value={value.displayName} onChange={(e) => set('displayName', e.target.value)} placeholder="Claude Opus 5.5" />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="m-provider">Provider</Label>
               <select id="m-provider" className={selectClass} value={value.provider} onChange={(e) => set('provider', e.target.value)}>
@@ -300,6 +306,7 @@ function UsageTab() {
         </p>
       </div>
       {error && <p className="text-destructive text-sm">{error}</p>}
+      <TableScroll>
       <table className="w-full text-sm">
         <thead className="text-muted-foreground text-left text-xs">
           <tr>
@@ -326,6 +333,7 @@ function UsageTab() {
           ))}
         </tbody>
       </table>
+      </TableScroll>
       {rows?.length === 0 && <p className="text-muted-foreground text-sm">No usage in this range.</p>}
       <p className="text-muted-foreground text-xs">Units are images generated or characters synthesised.</p>
     </section>
@@ -360,6 +368,7 @@ function UsersTab() {
     <section className="grid gap-3">
       <p className="text-muted-foreground text-sm">Accounts provisioned by Authentik via SCIM. "First seen" is the first sign-in to JoChat.</p>
       {error && <p className="text-destructive text-sm">{error}</p>}
+      <TableScroll>
       <table className="w-full text-sm">
         <thead className="text-muted-foreground text-left text-xs">
           <tr>
@@ -386,6 +395,12 @@ function UsersTab() {
           ))}
         </tbody>
       </table>
+      </TableScroll>
     </section>
   )
+}
+
+// Lets wide tables scroll sideways on narrow screens instead of squashing their columns.
+function TableScroll({ children }: { children: React.ReactNode }) {
+  return <div className="-mx-3 overflow-x-auto px-3 sm:mx-0 sm:px-0 [&_table]:min-w-xl [&_td]:whitespace-nowrap">{children}</div>
 }

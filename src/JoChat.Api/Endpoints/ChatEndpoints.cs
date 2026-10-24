@@ -138,6 +138,32 @@ public static class ChatEndpoints
                         .Select(e => new SseItem<ChatStreamEvent>(e, SseEventName(e)))))
             .RequireRateLimiting(RatePolicies.Chat);
 
+        group.MapPatch("/chats/{id:guid}", async (Guid id, UpdateChatRequest req, AppDbContext db,
+            ICurrentUserService current, CancellationToken ct) =>
+        {
+            var user = await current.GetRequiredUserAsync(ct);
+            var chat = await db.Chats.FirstOrDefaultAsync(c => c.Id == id && c.OwnerId == user.Id, ct);
+            if (chat is null) return Results.NotFound();
+
+            if (req.PersonaId is { } personaId && personaId != chat.PersonaId)
+            {
+                // Only before the first message for now: switching mid-conversation would replay one
+                // persona's (and possibly model's) turns to another, and messages don't record their author.
+                if (await db.Messages.AnyAsync(m => m.ChatId == id, ct))
+                    return Results.Problem("The persona can only be changed before the first message.",
+                        statusCode: StatusCodes.Status409Conflict);
+                var personaUsable = await db.Personas
+                    .AnyAsync(p => p.Id == personaId && (p.OwnerId == user.Id || p.IsShared), ct);
+                if (!personaUsable)
+                    return Results.Problem("Persona not found.", statusCode: StatusCodes.Status400BadRequest);
+
+                chat.PersonaId = personaId;
+                chat.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.NoContent();
+        });
+
         group.MapDelete("/chats/{id:guid}", async (Guid id, AppDbContext db,
             ICurrentUserService current, IFileStorage storage, CancellationToken ct) =>
         {
@@ -174,5 +200,6 @@ public static class ChatEndpoints
 }
 
 public record CreateChatRequest(Guid PersonaId, string? Title);
+public record UpdateChatRequest(Guid? PersonaId);
 public record SendMessageRequest(string Text, List<Guid>? AttachmentIds);
 public record EditMessageRequest(string Content);

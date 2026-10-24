@@ -9,12 +9,19 @@ public static class MeEndpoints
 {
     public static RouteGroupBuilder MapMeEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/me", async (ClaimsPrincipal principal, ICurrentUserService current, CancellationToken ct) =>
+        group.MapGet("/me", async (ClaimsPrincipal principal, ICurrentUserService current, AppDbContext db,
+            CancellationToken ct) =>
         {
             var user = await current.GetRequiredUserAsync(ct);
+            // The default isn't a foreign key: report it only while the persona still exists and is
+            // usable (not deleted, not unshared by its owner), so clients never start chats with a dead id.
+            var defaultPersonaId = user.DefaultPersonaId is { } id && await db.Personas
+                .AnyAsync(p => p.Id == id && (p.OwnerId == user.Id || p.IsShared), ct)
+                ? user.DefaultPersonaId
+                : null;
             return Results.Ok(new
             {
-                user.Id, user.ExternalId, user.DisplayName, user.DefaultPersonaId, user.CreatedAt,
+                user.Id, user.ExternalId, user.DisplayName, DefaultPersonaId = defaultPersonaId, user.CreatedAt,
                 Roles = principal.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList(),
             });
         });

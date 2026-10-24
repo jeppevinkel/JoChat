@@ -228,6 +228,11 @@ export function createApi(getToken: () => string | undefined) {
 
   return {
     me: () => json<Me>('/me'),
+    setDefaultPersona: (personaId: string | null) =>
+      json<void>('/me', {
+        method: 'PATCH',
+        body: JSON.stringify(personaId ? { defaultPersonaId: personaId } : { clearDefaultPersona: true }),
+      }),
     models: () => json<ModelDefinition[]>('/models'),
     personas: () => json<Persona[]>('/personas'),
     createPersona: (body: PersonaRequest) =>
@@ -239,6 +244,9 @@ export function createApi(getToken: () => string | undefined) {
     chats: () => json<ChatSummary[]>('/chats'),
     createChat: (personaId: string) =>
       json<{ id: string }>('/chats', { method: 'POST', body: JSON.stringify({ personaId }) }),
+    // Only allowed before the chat's first message (409 afterwards).
+    setChatPersona: (id: string, personaId: string) =>
+      json<void>(`/chats/${id}`, { method: 'PATCH', body: JSON.stringify({ personaId }) }),
     deleteChat: (id: string) => json<void>(`/chats/${id}`, { method: 'DELETE' }),
     messages: (chatId: string) => json<Message[]>(`/chats/${chatId}/messages`),
     updateMessage: (chatId: string, messageId: string, content: string) =>

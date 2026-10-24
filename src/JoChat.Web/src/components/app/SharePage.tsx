@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label'
 import { ApiError, useApi, type Persona, type SharedChat } from '@/lib/api'
 import { AttachmentSourceContext } from '@/lib/attachment-source'
 import { selectClass } from '@/lib/persona'
+import { messageImages } from '@/lib/use-image-gallery'
+import { Seal } from './Brand'
+import { ImageGalleryProvider } from './ImageViewer'
 import { MessageBubble } from './MessageBubble'
 
 export default function SharePage() {
@@ -45,6 +48,16 @@ export default function SharePage() {
   }, [api, token, auth.isAuthenticated])
 
   const resolver = useMemo(() => (id: string) => api.share.attachmentBlobUrl(token, id), [api, token])
+  const gallery = useMemo(() => chat?.messages.flatMap(messageImages) ?? [], [chat])
+
+  const title = chat?.title
+  useEffect(() => {
+    if (!title) return
+    document.title = `${title} · JoChat`
+    return () => {
+      document.title = 'JoChat'
+    }
+  }, [title])
 
   const clone = async (personaId?: string) => {
     setCloning(true)
@@ -88,48 +101,56 @@ export default function SharePage() {
 
   return (
     <AttachmentSourceContext.Provider value={resolver}>
-      <div className="flex h-full flex-col">
-        <header className="border-border flex items-center gap-3 border-b px-4 py-2">
-          <div className="min-w-0 flex-1">
-            <h1 className="truncate text-sm font-medium" title={chat.title}>
-              {chat.title}
-            </h1>
-            <p className="text-muted-foreground truncate text-xs">
-              Shared{chat.ownerName ? ` by ${chat.ownerName}` : ''}
-              {chat.persona ? ` · ${chat.persona.name} (${chat.persona.modelId})` : ''} · read-only
-            </p>
-          </div>
-          {auth.isAuthenticated ? (
-            <>
-              <Button variant="outline" size="sm" onClick={() => clone()} disabled={cloning}>
-                <Copy data-icon="inline-start" />
-                Clone to my chats
+      <ImageGalleryProvider items={gallery}>
+        <div className="flex h-full flex-col">
+          <header className="border-border flex min-h-14 items-center gap-2 border-b px-3 py-1.5 sm:gap-3 sm:px-4">
+            <Link to="/" aria-label="JoChat">
+              <Seal />
+            </Link>
+            <div className="min-w-0 flex-1">
+              <h1 className="font-heading truncate text-base font-semibold" title={chat.title}>
+                {chat.title}
+              </h1>
+              <p className="text-muted-foreground truncate text-xs">
+                Shared{chat.ownerName ? ` by ${chat.ownerName}` : ''}
+                {chat.persona ? ` · ${chat.persona.name} (${chat.persona.modelId})` : ''} · read-only
+              </p>
+            </div>
+            {auth.isAuthenticated ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => clone()} disabled={cloning} aria-label="Clone to my chats" title="Clone to my chats" className="pointer-coarse:h-9">
+                  <Copy data-icon="inline-start" />
+                  <span className="max-sm:hidden">Clone to my chats</span>
+                  <span className="sm:hidden">Clone</span>
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/')} className="pointer-coarse:h-9">
+                  <span className="max-sm:hidden">Open JoChat</span>
+                  <span className="sm:hidden">JoChat</span>
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={signIn} disabled={auth.isLoading} className="pointer-coarse:h-9">
+                <LogIn data-icon="inline-start" />
+                Sign in
               </Button>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
-                Open JoChat
-              </Button>
-            </>
-          ) : (
-            <Button variant="ghost" size="sm" onClick={signIn} disabled={auth.isLoading}>
-              <LogIn data-icon="inline-start" />
-              Sign in
-            </Button>
-          )}
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 px-4 py-6">
-            {chat.persona?.description && <p className="text-muted-foreground text-center text-xs">{chat.persona.description}</p>}
-            {chat.messages.map((m) => (
-              <MessageBubble
-                key={m.id}
-                message={{ id: m.id, role: m.role, content: m.content, attachments: m.attachments, steps: m.toolActivity ?? undefined }}
-              />
-            ))}
-            {error && <p className="text-destructive text-sm">{error}</p>}
+            )}
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div className="mx-auto flex max-w-3xl flex-col gap-5 px-4 py-5 sm:px-6 sm:py-8">
+              {chat.persona?.description && <p className="text-muted-foreground font-heading text-center italic">{chat.persona.description}</p>}
+              {chat.messages.map((m) => (
+                <MessageBubble
+                  key={m.id}
+                  message={{ id: m.id, role: m.role, content: m.content, attachments: m.attachments, steps: m.toolActivity ?? undefined }}
+                speaker={chat.persona?.name ?? 'Assistant'}
+                />
+              ))}
+              {error && <p className="text-destructive text-sm">{error}</p>}
+            </div>
           </div>
+          <PersonaPicker open={pickPersona} onOpenChange={setPickPersona} onPick={(id) => { setPickPersona(false); void clone(id) }} />
         </div>
-        <PersonaPicker open={pickPersona} onOpenChange={setPickPersona} onPick={(id) => { setPickPersona(false); void clone(id) }} />
-      </div>
+      </ImageGalleryProvider>
     </AttachmentSourceContext.Provider>
   )
 }

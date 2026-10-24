@@ -68,7 +68,7 @@ export function PersonaDialog({ open, onOpenChange, persona, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={guardedClose(isDirty, onOpenChange)} disablePointerDismissal>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{persona ? 'Edit persona' : 'New persona'}</DialogTitle>
           <DialogDescription>System prompt, model and defaults for chats using this persona.</DialogDescription>
