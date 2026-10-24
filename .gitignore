@@ -10,3 +10,6 @@ riderModule.iml
 *.db-wal
 # Built web client (produced by the PublishSpa target)
 src/JoChat.Api/wwwroot/
+
+# Local file storage (Storage:RootPath) — uploads, generated images, cached TTS audio
+src/JoChat.Api/data/
