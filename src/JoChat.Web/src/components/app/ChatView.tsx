@@ -17,6 +17,7 @@ import { ArrowDown, ImagePlus, Loader2, SendHorizontal, Sparkles, Square, X } fr
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { useApi, type ChatStreamEvent, type ToolStep } from '@/lib/api'
+import { fenced, insideFence, looksLikeCode } from '@/lib/code-paste'
 import { useChats } from '@/lib/use-chats'
 import { messageImages, useImageGallery, type GalleryItem } from '@/lib/use-image-gallery'
 import { COARSE_POINTER_QUERY, useMediaQuery } from '@/lib/use-media-query'
@@ -187,11 +188,27 @@ function ChatPane({ chatId }: { chatId: string }) {
   }
 
   const canAttach = !streaming && !imageMode
+  // Ctrl+Shift+V is the usual "paste as plain text": it skips the automatic code fence.
+  const plainPasteRef = useRef(false)
   const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
     const images = Array.from(e.clipboardData.files).filter((f) => IMAGE_TYPES.includes(f.type))
-    if (!canAttach || images.length === 0) return
+    if (images.length > 0) {
+      if (!canAttach) return
+      e.preventDefault()
+      addFiles(images)
+      return
+    }
+    const plain = plainPasteRef.current
+    plainPasteRef.current = false
+    const pasted = e.clipboardData.getData('text/plain')
+    const el = e.currentTarget
+    if (plain || imageMode || !looksLikeCode(pasted) || insideFence(el.value, el.selectionStart)) return
     e.preventDefault()
-    addFiles(images)
+    const insert = fenced(pasted, el.value.slice(0, el.selectionStart), el.value.slice(el.selectionEnd))
+    // execCommand keeps the paste a single native undo step; setText is the fallback.
+    if (!document.execCommand('insertText', false, insert)) {
+      setText(el.value.slice(0, el.selectionStart) + insert + el.value.slice(el.selectionEnd))
+    }
   }
   const onDragOver = (e: DragEvent) => {
     if (!canAttach || !e.dataTransfer.types.includes('Files')) return
@@ -354,6 +371,7 @@ function ChatPane({ chatId }: { chatId: string }) {
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'Assistant' && !m.id.startsWith('local-'))?.id
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    plainPasteRef.current = e.shiftKey && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v'
     if (e.key === 'Enter' && !e.shiftKey && !touch && !e.nativeEvent.isComposing) {
       e.preventDefault()
       void send()

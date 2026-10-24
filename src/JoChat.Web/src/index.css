@@ -203,13 +203,16 @@ body {
 .prose-chat blockquote > :last-child { margin-bottom: 0; }
 .prose-chat hr { border-color: color-mix(in oklab, currentColor 20%, transparent); margin: 0.75em 0; }
 .prose-chat a { text-decoration: underline; text-decoration-color: var(--accent-ink); text-decoration-thickness: 1.5px; text-underline-offset: 2px; }
-.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-family: var(--font-heading); font-weight: 600; margin: 0.9em 0 0.3em; line-height: 1.25; }
+.prose-chat h1, .prose-chat h2, .prose-chat h3 { font-weight: 650; margin: 0.9em 0 0.3em; line-height: 1.3; }
 .prose-chat h1 { font-size: 1.3em; }
 .prose-chat h2 { font-size: 1.18em; }
 .prose-chat h3 { font-size: 1.06em; }
 .prose-chat strong { font-weight: 650; }
-/* Replies are set like a page of print: serif at a comfortable reading size. */
-.prose-reply { font-family: var(--font-serif); font-size: 1.0625rem; line-height: 1.65; font-optical-sizing: auto; }
+/* Replies use the UI's sans at a comfortable reading size; serif is kept for brand and page
+   titles only, since long technical answers in a serif read poorly for many people. */
+.prose-reply { font-size: 0.975rem; line-height: 1.7; }
+/* Your own messages keep the line breaks you typed or pasted (Markdown would join them). */
+.prose-user p { white-space: pre-wrap; }
 .prose-reply ::marker { color: var(--muted-foreground); }
 .prose-chat .table-scroll { overflow-x: auto; }
 .prose-chat table { border-collapse: collapse; }

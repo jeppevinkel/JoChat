@@ -132,7 +132,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy, spea
             </div>
           </div>
         ) : (
-          <div className={cn('prose-chat', !isUser && 'prose-reply')}>
+          <div className={cn('prose-chat', isUser ? 'prose-user' : 'prose-reply')}>
             {message.steps && message.steps.length > 0 && <ToolActivity steps={message.steps} />}
             <Suspense fallback={<p className="whitespace-pre-wrap">{message.content}</p>}>
               <MarkdownContent>{message.content}</MarkdownContent>

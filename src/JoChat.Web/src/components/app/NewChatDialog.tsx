@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import {
@@ -19,7 +19,12 @@ import { PersonaForm } from './PersonaForm'
 export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const api = useApi()
   const navigate = useNavigate()
-  const { refresh } = useChats()
+  const { chats, refresh } = useChats()
+  // Read when the dialog opens; a ref so a chat-list refresh doesn't refetch and reset the form.
+  const chatsRef = useRef(chats)
+  useEffect(() => {
+    chatsRef.current = chats
+  }, [chats])
   const [personas, setPersonas] = useState<Persona[] | null>(null)
   const [models, setModels] = useState<ModelDefinition[]>([])
   const [personaId, setPersonaId] = useState('')
@@ -36,7 +41,9 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
         setError(null)
         setPersonas(p)
         setModels(m)
-        setPersonaId((cur) => cur || p[0]?.id || '')
+        // Default to the persona of the most recent chat: usually the one you want to continue with.
+        const recent = p.find((x) => x.id === chatsRef.current[0]?.personaId)?.id
+        setPersonaId((cur) => (cur && p.some((x) => x.id === cur) ? cur : recent ?? p[0]?.id ?? ''))
         // No personas yet: go straight to the create form, since a chat can't exist without one.
         setDraft(p.length === 0 ? emptyPersona(m) : null)
       })
