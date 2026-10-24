@@ -76,7 +76,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
     <div className={cn('group flex w-full', isUser ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'relative max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
+          'relative min-w-0 max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed',
           isUser ? 'bg-primary text-primary-foreground' : 'bg-muted',
           editing && 'w-[85%]',
         )}

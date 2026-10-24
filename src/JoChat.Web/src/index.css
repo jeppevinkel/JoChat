@@ -136,6 +136,8 @@ html, body, #root {
 }
 
 /* Lightweight markdown styling for assistant replies (no typography plugin). */
+/* Long unbroken strings (URLs, identifiers) wrap instead of overflowing the bubble; code blocks scroll. */
+.prose-chat { overflow-wrap: anywhere; min-width: 0; }
 .prose-chat > :first-child { margin-top: 0; }
 .prose-chat > :last-child { margin-bottom: 0; }
 .prose-chat p, .prose-chat ul, .prose-chat ol, .prose-chat pre, .prose-chat blockquote { margin: 0.5em 0; }
