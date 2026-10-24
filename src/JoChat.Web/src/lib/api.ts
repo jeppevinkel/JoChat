@@ -71,6 +71,44 @@ export interface ModelDefinition {
   supportsVision: boolean
 }
 
+export interface AdminModel {
+  id: string
+  provider: string
+  modelId: string
+  displayName: string
+  supportsVision: boolean
+  isEnabled: boolean
+}
+
+export interface ModelDefinitionRequest {
+  provider: string
+  modelId: string
+  displayName: string
+  supportsVision: boolean
+  isEnabled: boolean
+}
+
+export interface UsageRow {
+  userId: string
+  provider: string
+  modelOrVoiceId: string
+  kind: string
+  requests: number
+  tokensIn: number
+  tokensOut: number
+  units: number
+}
+
+export interface AdminUser {
+  scimUserId: string
+  externalId: string
+  userName: string
+  active: boolean
+  profileId: string | null
+  displayName: string | null
+  firstSeen: string | null
+}
+
 export interface Me {
   id: string
   displayName: string | null
@@ -149,6 +187,20 @@ export function createApi(getToken: () => string | undefined) {
       })
       await throwIfFailed(res)
       return URL.createObjectURL(await res.blob())
+    },
+
+    admin: {
+      models: () => json<AdminModel[]>('/admin/models'),
+      createModel: (body: ModelDefinitionRequest) =>
+        json<AdminModel>('/admin/models', { method: 'POST', body: JSON.stringify(body) }),
+      updateModel: (id: string, body: ModelDefinitionRequest) =>
+        json<AdminModel>(`/admin/models/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+      deleteModel: (id: string) => json<void>(`/admin/models/${id}`, { method: 'DELETE' }),
+      usage: (from: string, to: string) =>
+        json<{ from: string; to: string; rows: UsageRow[] }>(
+          `/admin/usage?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        ),
+      users: () => json<AdminUser[]>('/admin/users'),
     },
 
     uploadAttachment: async (file: File): Promise<{ id: string; mimeType: string }> => {

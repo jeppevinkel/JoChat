@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { NavLink, useNavigate, useParams } from 'react-router'
 import { useAuth } from 'react-oidc-context'
-import { LogOut, MessageSquarePlus, Trash2, UserCog } from 'lucide-react'
+import { LogOut, MessageSquarePlus, ShieldCheck, Trash2, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useApi } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
+import { useIsAdmin } from '@/lib/use-me'
 import { cn } from '@/lib/utils'
 import { NewChatDialog } from './NewChatDialog'
 
@@ -15,6 +16,7 @@ export function Sidebar() {
   const navigate = useNavigate()
   const { id: activeId } = useParams()
   const { chats, loading, error, refresh } = useChats()
+  const isAdmin = useIsAdmin()
   const [newOpen, setNewOpen] = useState(false)
 
   const remove = async (id: string) => {
@@ -75,6 +77,21 @@ export function Sidebar() {
           {displayName}
         </span>
         <div className="flex shrink-0">
+          {isAdmin && (
+            <NavLink
+              to="/admin"
+              aria-label="Admin"
+              title="Admin"
+              className={({ isActive }) =>
+                cn(
+                  'hover:bg-sidebar-accent inline-flex size-8 items-center justify-center rounded-md',
+                  isActive && 'bg-sidebar-accent',
+                )
+              }
+            >
+              <ShieldCheck className="size-4" />
+            </NavLink>
+          )}
           <NavLink
             to="/personas"
             aria-label="Personas"

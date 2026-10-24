@@ -2,11 +2,19 @@ import { Suspense, lazy } from 'react'
 import { Route, Routes } from 'react-router'
 import { useAuth } from 'react-oidc-context'
 import { ChatsProvider } from '@/lib/chats-context'
+import { MeProvider } from '@/lib/me-context'
+import { useIsAdmin } from '@/lib/use-me'
 import { ChatView } from '@/components/app/ChatView'
 import { Login } from '@/components/app/Login'
 import { Sidebar } from '@/components/app/Sidebar'
 
 const PersonasPage = lazy(() => import('@/components/app/PersonasPage'))
+const AdminPage = lazy(() => import('@/components/app/AdminPage'))
+
+// Hides the page from non-admins; the API enforces the SuperAdmin policy regardless.
+function AdminRoute() {
+  return useIsAdmin() ? <AdminPage /> : <Empty />
+}
 
 function Empty() {
   return (
@@ -25,19 +33,22 @@ export default function App() {
   if (!auth.isAuthenticated) return <Login />
 
   return (
-    <ChatsProvider>
-      <div className="flex h-full">
-        <Sidebar />
-        <main className="flex min-w-0 flex-1">
-          <Suspense fallback={<Empty />}>
-            <Routes>
-              <Route path="/" element={<Empty />} />
-              <Route path="/chats/:id" element={<ChatView />} />
-              <Route path="/personas" element={<PersonasPage />} />
-            </Routes>
-          </Suspense>
-        </main>
-      </div>
-    </ChatsProvider>
+    <MeProvider>
+      <ChatsProvider>
+        <div className="flex h-full">
+          <Sidebar />
+          <main className="flex min-w-0 flex-1">
+            <Suspense fallback={<Empty />}>
+              <Routes>
+                <Route path="/" element={<Empty />} />
+                <Route path="/chats/:id" element={<ChatView />} />
+                <Route path="/personas" element={<PersonasPage />} />
+                <Route path="/admin" element={<AdminRoute />} />
+              </Routes>
+            </Suspense>
+          </main>
+        </div>
+      </ChatsProvider>
+    </MeProvider>
   )
 }
