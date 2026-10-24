@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -143,16 +143,16 @@ function ModelsTab() {
 }
 
 function ModelDialog({ open, onOpenChange, model, onSaved }: { open: boolean; onOpenChange: (o: boolean) => void; model: AdminModel | null; onSaved: () => void }) {
-  const dirtyRef = useRef(false)
+  const [dirty, setDirty] = useState(false)
   return (
-    <Dialog open={open} onOpenChange={guardedClose(() => dirtyRef.current, onOpenChange)} disablePointerDismissal>
+    <Dialog open={open} onOpenChange={guardedClose(() => dirty, onOpenChange)} disablePointerDismissal>
       {/* Keyed so each opening starts from the given model's values via the state initialiser. */}
-      {open && <ModelForm key={model?.id ?? 'new'} model={model} onSaved={onSaved} onOpenChange={onOpenChange} dirtyRef={dirtyRef} />}
+      {open && <ModelForm key={model?.id ?? 'new'} model={model} onSaved={onSaved} onOpenChange={onOpenChange} onDirtyChange={setDirty} />}
     </Dialog>
   )
 }
 
-function ModelForm({ model, onSaved, onOpenChange, dirtyRef }: { model: AdminModel | null; onSaved: () => void; onOpenChange: (o: boolean) => void; dirtyRef: React.MutableRefObject<boolean> }) {
+function ModelForm({ model, onSaved, onOpenChange, onDirtyChange }: { model: AdminModel | null; onSaved: () => void; onOpenChange: (o: boolean) => void; onDirtyChange: (dirty: boolean) => void }) {
   const api = useApi()
   const initial = useMemo<ModelDefinitionRequest>(
     () => (model ? { provider: model.provider, modelId: model.modelId, displayName: model.displayName, supportsVision: model.supportsVision, isEnabled: model.isEnabled } : emptyModel),
@@ -160,8 +160,8 @@ function ModelForm({ model, onSaved, onOpenChange, dirtyRef }: { model: AdminMod
   )
   const [value, setValue] = useState<ModelDefinitionRequest>(initial)
   useEffect(() => {
-    dirtyRef.current = JSON.stringify(value) !== JSON.stringify(initial)
-  }, [value, initial, dirtyRef])
+    onDirtyChange(JSON.stringify(value) !== JSON.stringify(initial))
+  }, [value, initial, onDirtyChange])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
