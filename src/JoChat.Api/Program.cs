@@ -2,6 +2,7 @@ using JoChat.Api.Auth;
 using JoChat.Api.Endpoints;
 using JoChat.Api.Services;
 using JoChat.Core.Constants;
+using JoChat.Core.Entities;
 using JoChat.Core.Options;
 using JoChat.Infrastructure;
 using JoChat.Infrastructure.Persistence;
@@ -69,7 +70,18 @@ if (app.Environment.IsDevelopment())
 
     // Auto-apply pending migrations locally (SQLite) so the dev DB file stays current.
     using var scope = app.Services.CreateScope();
-    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    db.Database.Migrate();
+
+    // Personas can only target enabled ModelDefinitions, so give a fresh dev DB something to pick.
+    if (!db.ModelDefinitions.Any())
+    {
+        db.ModelDefinitions.AddRange(
+            new ModelDefinition { Id = Guid.NewGuid(), Provider = "anthropic", ModelId = "claude-opus-5-5", DisplayName = "Claude Opus 5.5", SupportsVision = true },
+            new ModelDefinition { Id = Guid.NewGuid(), Provider = "anthropic", ModelId = "claude-sonnet-5-5", DisplayName = "Claude Sonnet 5.5", SupportsVision = true },
+            new ModelDefinition { Id = Guid.NewGuid(), Provider = "anthropic", ModelId = "claude-haiku-5-5", DisplayName = "Claude Haiku 5.5", SupportsVision = true });
+        db.SaveChanges();
+    }
 }
 
 app.UseHttpsRedirection();
