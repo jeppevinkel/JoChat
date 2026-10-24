@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -9,14 +9,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { useApi, type ModelDefinition, type Persona } from '@/lib/api'
+import { useApi, type ModelDefinition, type Persona, type PersonaRequest } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
-
-const selectClass =
-  'border-input bg-background h-8 w-full rounded-md border px-2 text-sm shadow-xs focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:outline-none'
+import { emptyPersona, isValidPersona, selectClass } from '@/lib/persona'
+import { PersonaForm } from './PersonaForm'
 
 export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const api = useApi()
@@ -25,27 +22,29 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [personas, setPersonas] = useState<Persona[] | null>(null)
   const [models, setModels] = useState<ModelDefinition[]>([])
   const [personaId, setPersonaId] = useState('')
-  const [creating, setCreating] = useState(false)
+  const [draft, setDraft] = useState<PersonaRequest | null>(null) // non-null = inline create mode
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Inline persona form — there's no persona page yet and a chat can't exist without one.
-  const [name, setName] = useState('')
-  const [modelKey, setModelKey] = useState('')
-  const [systemPrompt, setSystemPrompt] = useState('')
-
   useEffect(() => {
     if (!open) return
+    let cancelled = false
     Promise.all([api.personas(), api.models()])
       .then(([p, m]) => {
+        if (cancelled) return
         setError(null)
         setPersonas(p)
         setModels(m)
         setPersonaId((cur) => cur || p[0]?.id || '')
-        setModelKey((cur) => cur || (m[0] ? `${m[0].provider}/${m[0].modelId}` : ''))
-        setCreating(p.length === 0)
+        // No personas yet: go straight to the create form, since a chat can't exist without one.
+        setDraft(p.length === 0 ? emptyPersona(m) : null)
       })
-      .catch((e) => setError(e.message))
+      .catch((e) => {
+        if (!cancelled) setError(e.message)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [open, api])
 
   const start = async (id: string) => {
@@ -63,12 +62,12 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     }
   }
 
-  const createPersonaAndStart = async () => {
-    const [provider, modelId] = modelKey.split('/')
+  const createAndStart = async () => {
+    if (!draft) return
     setBusy(true)
     setError(null)
     try {
-      const persona = await api.createPersona({ name, systemPrompt, provider, modelId, isShared: false })
+      const persona = await api.createPersona(draft)
       setPersonas((p) => [...(p ?? []), persona])
       await start(persona.id)
     } catch (e) {
@@ -79,41 +78,16 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>New chat</DialogTitle>
           <DialogDescription>
-            {creating ? 'Create a persona to chat with.' : 'Pick the persona for this conversation.'}
+            {draft ? 'Create a persona to chat with.' : 'Pick the persona for this conversation.'}
           </DialogDescription>
         </DialogHeader>
 
-        {creating ? (
-          <div className="grid gap-3">
-            <div className="grid gap-1.5">
-              <Label htmlFor="persona-name">Name</Label>
-              <Input id="persona-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Assistant" />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="persona-model">Model</Label>
-              <select id="persona-model" className={selectClass} value={modelKey} onChange={(e) => setModelKey(e.target.value)}>
-                {models.map((m) => (
-                  <option key={m.id} value={`${m.provider}/${m.modelId}`}>
-                    {m.displayName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="persona-prompt">System prompt</Label>
-              <Textarea
-                id="persona-prompt"
-                rows={5}
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-                placeholder="You are a helpful assistant."
-              />
-            </div>
-          </div>
+        {draft ? (
+          <PersonaForm value={draft} onChange={setDraft} models={models} idPrefix="new-chat-persona" />
         ) : (
           <div className="grid gap-1.5">
             <Label htmlFor="persona">Persona</Label>
@@ -125,6 +99,9 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
                 </option>
               ))}
             </select>
+            <Link to="/personas" className="text-muted-foreground text-xs underline" onClick={() => onOpenChange(false)}>
+              Manage personas
+            </Link>
           </div>
         )}
 
@@ -132,12 +109,12 @@ export function NewChatDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
         <DialogFooter>
           {personas && personas.length > 0 && (
-            <Button variant="ghost" onClick={() => setCreating((c) => !c)} disabled={busy}>
-              {creating ? 'Choose existing' : 'New persona'}
+            <Button variant="ghost" onClick={() => setDraft((d) => (d ? null : emptyPersona(models)))} disabled={busy}>
+              {draft ? 'Choose existing' : 'New persona'}
             </Button>
           )}
-          {creating ? (
-            <Button onClick={createPersonaAndStart} disabled={busy || !name.trim() || !modelKey}>
+          {draft ? (
+            <Button onClick={createAndStart} disabled={busy || !isValidPersona(draft)}>
               Create & start
             </Button>
           ) : (

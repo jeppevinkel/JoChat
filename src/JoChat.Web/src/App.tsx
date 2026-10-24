@@ -1,9 +1,12 @@
+import { Suspense, lazy } from 'react'
 import { Route, Routes } from 'react-router'
 import { useAuth } from 'react-oidc-context'
 import { ChatsProvider } from '@/lib/chats-context'
 import { ChatView } from '@/components/app/ChatView'
 import { Login } from '@/components/app/Login'
 import { Sidebar } from '@/components/app/Sidebar'
+
+const PersonasPage = lazy(() => import('@/components/app/PersonasPage'))
 
 function Empty() {
   return (
@@ -26,10 +29,13 @@ export default function App() {
       <div className="flex h-full">
         <Sidebar />
         <main className="flex min-w-0 flex-1">
-          <Routes>
-            <Route path="/" element={<Empty />} />
-            <Route path="/chats/:id" element={<ChatView />} />
-          </Routes>
+          <Suspense fallback={<Empty />}>
+            <Routes>
+              <Route path="/" element={<Empty />} />
+              <Route path="/chats/:id" element={<ChatView />} />
+              <Route path="/personas" element={<PersonasPage />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </ChatsProvider>

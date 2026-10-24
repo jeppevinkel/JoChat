@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { NavLink, useNavigate, useParams } from 'react-router'
 import { useAuth } from 'react-oidc-context'
-import { LogOut, MessageSquarePlus, Trash2 } from 'lucide-react'
+import { LogOut, MessageSquarePlus, Trash2, UserCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useApi } from '@/lib/api'
@@ -74,9 +74,24 @@ export function Sidebar() {
         <span className="truncate text-sm" title={displayName}>
           {displayName}
         </span>
-        <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => auth.signoutRedirect()}>
-          <LogOut />
-        </Button>
+        <div className="flex shrink-0">
+          <NavLink
+            to="/personas"
+            aria-label="Personas"
+            title="Personas"
+            className={({ isActive }) =>
+              cn(
+                'hover:bg-sidebar-accent inline-flex size-8 items-center justify-center rounded-md',
+                isActive && 'bg-sidebar-accent',
+              )
+            }
+          >
+            <UserCog className="size-4" />
+          </NavLink>
+          <Button variant="ghost" size="icon" aria-label="Sign out" onClick={() => auth.signoutRedirect()}>
+            <LogOut />
+          </Button>
+        </div>
       </div>
 
       <NewChatDialog open={newOpen} onOpenChange={setNewOpen} />

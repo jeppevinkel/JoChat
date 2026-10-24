@@ -35,9 +35,32 @@ export interface Persona {
   systemPrompt: string
   provider: string
   modelId: string
+  temperature: number | null
   maxTokens: number | null
+  defaultTtsProvider: string | null
+  defaultTtsVoiceId: string | null
   isShared: boolean
   isOwner: boolean
+  updatedAt: string
+}
+
+export interface PersonaRequest {
+  name: string
+  description: string | null
+  systemPrompt: string
+  provider: string
+  modelId: string
+  temperature: number | null
+  maxTokens: number | null
+  defaultTtsProvider: string | null
+  defaultTtsVoiceId: string | null
+  isShared: boolean
+}
+
+export interface TtsVoice {
+  id: string
+  name: string
+  previewUrl: string | null
 }
 
 export interface ModelDefinition {
@@ -98,15 +121,12 @@ export function createApi(getToken: () => string | undefined) {
     me: () => json<Me>('/me'),
     models: () => json<ModelDefinition[]>('/models'),
     personas: () => json<Persona[]>('/personas'),
-    createPersona: (body: {
-      name: string
-      systemPrompt: string
-      provider: string
-      modelId: string
-      isShared: boolean
-      description?: string | null
-      maxTokens?: number | null
-    }) => json<Persona>('/personas', { method: 'POST', body: JSON.stringify(body) }),
+    createPersona: (body: PersonaRequest) =>
+      json<Persona>('/personas', { method: 'POST', body: JSON.stringify(body) }),
+    updatePersona: (id: string, body: PersonaRequest) =>
+      json<Persona>(`/personas/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+    deletePersona: (id: string) => json<void>(`/personas/${id}`, { method: 'DELETE' }),
+    ttsVoices: (provider: string) => json<TtsVoice[]>(`/tts/voices?provider=${encodeURIComponent(provider)}`),
     chats: () => json<ChatSummary[]>('/chats'),
     createChat: (personaId: string) =>
       json<{ id: string }>('/chats', { method: 'POST', body: JSON.stringify({ personaId }) }),
