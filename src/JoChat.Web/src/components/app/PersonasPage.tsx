@@ -74,6 +74,10 @@ export default function PersonasPage() {
                     {p.provider}/{p.modelId}
                     {p.maxTokens ? ` · ${p.maxTokens} tokens` : ''}
                     {p.defaultTtsProvider ? ` · voice: ${p.defaultTtsProvider}` : ''}
+                    {[p.enableWebSearch && 'search', p.enableWebFetch && 'fetch', p.enableCodeExecution && 'code']
+                      .filter(Boolean)
+                      .map((t) => ` · ${t}`)
+                      .join('')}
                   </p>
                   {p.description && <p className="mt-1 text-sm">{p.description}</p>}
                   <p className="text-muted-foreground mt-2 line-clamp-3 text-xs whitespace-pre-wrap">{p.systemPrompt}</p>

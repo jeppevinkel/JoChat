@@ -15,6 +15,9 @@ export function emptyPersona(models: ModelDefinition[]): PersonaRequest {
     maxTokens: null,
     defaultTtsProvider: null,
     defaultTtsVoiceId: null,
+    enableWebSearch: false,
+    enableWebFetch: false,
+    enableCodeExecution: false,
     isShared: false,
   }
 }
@@ -30,6 +33,9 @@ export function toRequest(p: Persona): PersonaRequest {
     maxTokens: p.maxTokens,
     defaultTtsProvider: p.defaultTtsProvider,
     defaultTtsVoiceId: p.defaultTtsVoiceId,
+    enableWebSearch: p.enableWebSearch,
+    enableWebFetch: p.enableWebFetch,
+    enableCodeExecution: p.enableCodeExecution,
     isShared: p.isShared,
   }
 }

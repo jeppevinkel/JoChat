@@ -3,7 +3,7 @@ import { useParams } from 'react-router'
 import { ArrowDown, ImagePlus, SendHorizontal, Sparkles, Square, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { useApi, type ChatStreamEvent } from '@/lib/api'
+import { useApi, type ChatStreamEvent, type ToolStep } from '@/lib/api'
 import { useChats } from '@/lib/use-chats'
 import { MessageBubble, type DisplayMessage, type MessageActions, type TtsDefaults } from './MessageBubble'
 
@@ -60,7 +60,7 @@ function ChatPane({ chatId }: { chatId: string }) {
   const load = useCallback(async () => {
     try {
       const list = await api.messages(chatId)
-      setMessages(list.map((m) => ({ id: m.id, role: m.role, content: m.content, attachments: m.attachments })))
+      setMessages(list.map((m) => ({ id: m.id, role: m.role, content: m.content, attachments: m.attachments, steps: m.toolActivity ?? undefined })))
       setLoadError(null)
       loadedRef.current = true
     } catch (e) {
@@ -168,6 +168,14 @@ function ChatPane({ chatId }: { chatId: string }) {
         if (evt.type === 'text') {
           partial += evt.text
           patchAssistant((m) => ({ ...m, content: m.content + evt.text }))
+        } else if (evt.type === 'tool_use' || evt.type === 'tool_result') {
+          const step: ToolStep = {
+            kind: evt.type === 'tool_use' ? 'use' : 'result',
+            tool: evt.tool,
+            label: evt.label,
+            isError: evt.type === 'tool_result' && evt.isError,
+          }
+          patchAssistant((m) => ({ ...m, steps: [...(m.steps ?? []), step] }))
         } else if (evt.type === 'error') {
           failure = evt.message
           patchAssistant({ error: evt.message, streaming: false })

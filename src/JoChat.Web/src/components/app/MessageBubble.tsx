@@ -1,7 +1,7 @@
 import { Suspense, lazy, useState, type KeyboardEvent } from 'react'
-import { Check, Loader2, Pencil, RefreshCw, Square, Trash2, Volume2, X } from 'lucide-react'
+import { Check, Globe, Loader2, Pencil, RefreshCw, Search, Square, Terminal, Trash2, Volume2, Wrench, X } from 'lucide-react'
 import { Textarea } from '@/components/ui/textarea'
-import { useApi, type AttachmentRef } from '@/lib/api'
+import { useApi, type AttachmentRef, type ToolStep } from '@/lib/api'
 import { play, stop, usePlayer } from '@/lib/tts-player'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
@@ -20,6 +20,7 @@ export interface DisplayMessage {
   attachments: AttachmentRef[]
   // Local previews for just-sent uploads that aren't fetched back from the API yet.
   previewUrls?: string[]
+  steps?: ToolStep[]
   streaming?: boolean
   error?: string
 }
@@ -137,6 +138,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
           </div>
         ) : (
           <div className="prose-chat">
+            {message.steps && message.steps.length > 0 && <ToolActivity steps={message.steps} />}
             <Suspense fallback={<p className="whitespace-pre-wrap">{message.content}</p>}>
               <MarkdownContent>{message.content}</MarkdownContent>
             </Suspense>
@@ -148,6 +150,31 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy }: Pr
         {message.error && <p className="text-destructive mt-2 text-xs">{message.error}</p>}
       </div>
     </div>
+  )
+}
+
+const TOOL_ICONS: Record<string, typeof Wrench> = {
+  web_search: Search,
+  web_fetch: Globe,
+  code_execution: Terminal,
+  bash_code_execution: Terminal,
+  text_editor_code_execution: Terminal,
+}
+
+// Compact log of what the model did with its tools, shown above the reply text.
+function ToolActivity({ steps }: { steps: ToolStep[] }) {
+  return (
+    <ul className="text-muted-foreground mb-2 grid gap-0.5 text-xs">
+      {steps.map((s, i) => {
+        const Icon = TOOL_ICONS[s.tool] ?? Wrench
+        return (
+          <li key={i} className={cn('flex items-start gap-1.5', s.isError && 'text-destructive', s.kind === 'result' && 'pl-4')}>
+            {s.kind === 'use' && <Icon className="mt-0.5 size-3 shrink-0" />}
+            <span className="break-words">{s.label}</span>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

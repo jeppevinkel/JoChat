@@ -17,6 +17,13 @@ export interface AttachmentRef {
   height: number | null
 }
 
+export interface ToolStep {
+  kind: 'use' | 'result'
+  tool: string
+  label: string
+  isError: boolean
+}
+
 export interface Message {
   id: string
   parentMessageId: string | null
@@ -26,6 +33,7 @@ export interface Message {
   tokensOut: number | null
   createdAt: string
   attachments: AttachmentRef[]
+  toolActivity: ToolStep[] | null
 }
 
 export interface Persona {
@@ -39,6 +47,9 @@ export interface Persona {
   maxTokens: number | null
   defaultTtsProvider: string | null
   defaultTtsVoiceId: string | null
+  enableWebSearch: boolean
+  enableWebFetch: boolean
+  enableCodeExecution: boolean
   isShared: boolean
   isOwner: boolean
   updatedAt: string
@@ -54,6 +65,9 @@ export interface PersonaRequest {
   maxTokens: number | null
   defaultTtsProvider: string | null
   defaultTtsVoiceId: string | null
+  enableWebSearch: boolean
+  enableWebFetch: boolean
+  enableCodeExecution: boolean
   isShared: boolean
 }
 
@@ -121,8 +135,12 @@ export interface Me {
 
 export type ChatStreamEvent =
   | { type: 'text'; text: string }
+  | { type: 'tool_use'; tool: string; label: string }
+  | { type: 'tool_result'; tool: string; label: string; isError: boolean }
   | { type: 'completed'; tokensIn: number; tokensOut: number; stopReason: string }
   | { type: 'error'; message: string }
+
+const STREAM_EVENTS = new Set(['text', 'tool_use', 'tool_result', 'completed', 'error'])
 
 export class ApiError extends Error {
   status: number
@@ -159,7 +177,7 @@ async function* streamEvents(
   await throwIfFailed(res)
   for await (const evt of readSse(res)) {
     const data = JSON.parse(evt.data)
-    if (evt.event === 'text' || evt.event === 'completed' || evt.event === 'error') {
+    if (STREAM_EVENTS.has(evt.event)) {
       yield { type: evt.event, ...data } as ChatStreamEvent
     }
   }

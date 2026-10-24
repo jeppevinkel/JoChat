@@ -135,6 +135,22 @@ export function PersonaForm({ value, onChange, models, idPrefix = 'persona' }: P
           {voicesError && <p className="text-destructive text-xs">{voicesError}</p>}
         </div>
       </div>
+      <fieldset className="grid gap-1.5">
+        <legend className="text-sm font-medium">Tools</legend>
+        <p className="text-muted-foreground text-xs">Run on Anthropic's side; the persona decides when to use them.</p>
+        {(
+          [
+            ['enableWebSearch', 'Web search'],
+            ['enableWebFetch', 'Web fetch (read pages the user or a search mentions)'],
+            ['enableCodeExecution', 'Code execution (sandboxed Python/bash)'],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" className="accent-primary size-4" checked={value[key]} onChange={(e) => set(key, e.target.checked)} />
+            {label}
+          </label>
+        ))}
+      </fieldset>
       <label className="flex items-center gap-2 text-sm">
         <input
           type="checkbox"
