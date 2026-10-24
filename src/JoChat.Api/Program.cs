@@ -124,6 +124,7 @@ if (serveSpa)
     app.MapFallbackToFile("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", "index.html");
 
 app.MapScim("/v2"); // Authentik SCIM provider points here; uses its own ScimToken scheme
+app.MapConfigEndpoints();
 
 var api = app.MapGroup("/api").RequireAuthorization(Policies.User);
 api.MapMeEndpoints();

@@ -17,13 +17,15 @@ npm run dev        # http://localhost:5173, proxies /api -> localhost:5073
 
 ## Authentik requirements
 
-The OIDC provider identified in `.env` (`VITE_OIDC_AUTHORITY`, `VITE_OIDC_CLIENT_ID`) must be a
-**public** client with `http://localhost:5173/` registered as a redirect URI (strict match,
-trailing slash included). Tokens are kept in `sessionStorage`, so each new tab signs in again.
+The client reads its OIDC settings at startup from `GET /api/config` (served by the API from
+`Oidc:Authority` / `Oidc:ClientId`), so nothing is baked into the bundle. The provider must be a
+**public** client with `<origin>/` registered as a redirect URI (strict match, trailing slash
+included) for every origin the UI is served from. Tokens are kept in `sessionStorage`, so each
+new tab signs in again.
 
 ## Layout
 
-- `src/auth.ts` — OIDC settings.
+- `src/auth.ts` — runtime config fetch and OIDC settings.
 - `src/lib/api.ts` — typed API client; `sendMessage` consumes the SSE stream (`text` /
   `completed` / `error` events) via `fetch`, because `EventSource` can't POST or send a bearer token.
 - `src/lib/chats-context.tsx`, `src/lib/use-chats.ts` — shared chat list state.

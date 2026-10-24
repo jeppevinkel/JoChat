@@ -12,6 +12,8 @@ public class OidcOptions
     public const string Section = "Oidc";
     public required string Authority { get; set; }
     public required string Audience { get; set; }
+    /// <summary>OAuth client id handed to the browser; defaults to Audience, which Authentik sets to the client id.</summary>
+    public string? ClientId { get; set; }
 }
 
 public class AnthropicOptions
