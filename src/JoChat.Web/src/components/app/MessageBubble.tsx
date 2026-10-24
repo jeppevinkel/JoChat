@@ -1,4 +1,5 @@
 import Markdown from 'react-markdown'
+import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 import { AuthImage } from './AuthImage'
@@ -36,16 +37,14 @@ export function MessageBubble({ message }: { message: DisplayMessage }) {
               ))}
           </div>
         ) : null}
-        {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
-        ) : (
-          <div className="prose-chat">
-            <Markdown remarkPlugins={[remarkGfm]}>{message.content}</Markdown>
-            {message.streaming && !message.content && (
-              <span className="text-muted-foreground animate-pulse">Thinking…</span>
-            )}
-          </div>
-        )}
+        <div className="prose-chat">
+          <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
+            {message.content}
+          </Markdown>
+          {message.streaming && !message.content && (
+            <span className="text-muted-foreground animate-pulse">Thinking…</span>
+          )}
+        </div>
         {message.error && <p className="text-destructive mt-2 text-xs">{message.error}</p>}
       </div>
     </div>
