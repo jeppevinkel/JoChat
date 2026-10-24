@@ -20,6 +20,13 @@ public static class ImageEndpoints
             if (string.IsNullOrWhiteSpace(req.Prompt))
                 return Results.Problem("Prompt is required.", statusCode: StatusCodes.Status400BadRequest);
 
+            // Checked before anything that costs a model call (the persona's prompt rewrite below).
+            var providerId = req.Provider ?? "openai";
+            var provider = services.GetKeyedService<IImageGenerationProvider>(providerId);
+            if (provider is null)
+                return Results.Problem($"Unknown image provider '{providerId}'.",
+                    statusCode: StatusCodes.Status400BadRequest);
+
             var user = await current.GetRequiredUserAsync(ct);
 
             // When generated from inside a chat the image is recorded as a turn, so it survives
@@ -63,12 +70,6 @@ public static class ImageEndpoints
                 written = await promptWriter.WriteAsync(chat.Persona, history, req.Prompt, ct);
                 if (written is not null) imagePrompt = written.Prompt;
             }
-
-            var providerId = req.Provider ?? "openai";
-            var provider = services.GetKeyedService<IImageGenerationProvider>(providerId);
-            if (provider is null)
-                return Results.Problem($"Unknown image provider '{providerId}'.",
-                    statusCode: StatusCodes.Status400BadRequest);
 
             GeneratedImage image;
             try
