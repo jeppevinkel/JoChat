@@ -1,4 +1,4 @@
-import { useRef, type ComponentProps } from 'react'
+import { memo, useRef, type ComponentProps } from 'react'
 import Markdown, { type Components } from 'react-markdown'
 import rehypeHighlight from 'rehype-highlight'
 import remarkGfm from 'remark-gfm'
@@ -44,11 +44,12 @@ const components: Components = {
 }
 
 // Split into its own chunk: react-markdown + highlight.js are the heaviest dependencies
-// and aren't needed until the first message renders.
-export default function MarkdownContent({ children }: { children: string }) {
+// and aren't needed until the first message renders. Memoized so a bubble re-rendering for other
+// reasons (busy state, actions) doesn't re-parse and re-highlight unchanged text.
+export default memo(function MarkdownContent({ children }: { children: string }) {
   return (
     <Markdown remarkPlugins={[remarkGfm]} rehypePlugins={[[rehypeHighlight, highlightOptions]]} components={components}>
       {children}
     </Markdown>
   )
-}
+})

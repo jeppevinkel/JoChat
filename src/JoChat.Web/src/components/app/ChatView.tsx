@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -394,7 +395,10 @@ function ChatPane({ chatId, paneKey }: { chatId: string | null; paneKey: string 
     previewUrls.forEach((u) => URL.revokeObjectURL(u))
   }
 
-  const actions: MessageActions = {
+  // The handlers close over the latest state, but the object handed to the (memoized) bubbles must
+  // keep one identity, or typing in the composer re-renders every message. The ref is refreshed
+  // after each render; handlers only run from events, by which time it is current.
+  const latestActions: MessageActions = {
     onEdit: async (id, content) => {
       setActionError(null)
       try {
@@ -429,6 +433,18 @@ function ChatPane({ chatId, paneKey }: { chatId: string | null; paneKey: string 
       void consume(api.regenerate(chatIdRef.current!, id, controller.signal), assistantId, controller)
     },
   }
+  const actionsRef = useRef(latestActions)
+  useLayoutEffect(() => {
+    actionsRef.current = latestActions
+  })
+  const actions = useMemo<MessageActions>(
+    () => ({
+      onEdit: (id, content) => actionsRef.current.onEdit(id, content),
+      onDelete: (id) => actionsRef.current.onDelete(id),
+      onRegenerate: (id) => actionsRef.current.onRegenerate(id),
+    }),
+    [],
+  )
 
   const lastAssistantId = [...messages].reverse().find((m) => m.role === 'Assistant' && !m.id.startsWith('local-'))?.id
 

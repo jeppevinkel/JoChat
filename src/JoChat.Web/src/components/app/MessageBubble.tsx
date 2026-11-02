@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState, type KeyboardEvent } from 'react'
+import { Suspense, lazy, memo, useState, type KeyboardEvent } from 'react'
 import { Download, Globe, Loader2, Pencil, RefreshCw, Search, Square, Terminal, Trash2, Volume2, Wrench } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
@@ -46,7 +46,10 @@ interface Props {
   speaker?: string
 }
 
-export function MessageBubble({ message, tts, actions, canRegenerate, busy, speaker }: Props) {
+// Memoized: the chat re-renders on every keystroke in the composer, and re-parsing every
+// message's markdown (plus highlight.js language detection) each time makes long chats crawl.
+// Callers must pass stable `message`, `tts` and `actions` references for this to hold.
+export const MessageBubble = memo(function MessageBubble({ message, tts, actions, canRegenerate, busy, speaker }: Props) {
   const isUser = message.role === 'User'
   // Local placeholders (in-flight or failed replies) have no server id to act on.
   const persisted = !message.id.startsWith('local-')
@@ -185,7 +188,7 @@ export function MessageBubble({ message, tts, actions, canRegenerate, busy, spea
       )}
     </div>
   )
-}
+})
 
 // Opens the conversation-wide image viewer at this image.
 function Thumbnail({ item, single }: { item: GalleryItem; single: boolean }) {
