@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#111520"/>
+  <g transform="translate(150 175) rotate(-4 140 140)">
+    <rect x="0" y="0" width="280" height="280" rx="27" fill="#e3a43c"/>
+    <rect x="16" y="16" width="248" height="248" rx="16" fill="none" stroke="#1f2533" stroke-opacity=".22" stroke-width="10"/>
+    <text x="140" y="210" text-anchor="middle" font-family="Noto Serif, Georgia, serif" font-weight="700" font-size="205" fill="#1f2533">J</text>
+  </g>
+  <text x="520" y="300" font-family="Noto Serif, Georgia, serif" font-weight="700" font-size="112" fill="#faf8f3">JoChat</text>
+  <text x="524" y="370" font-family="Noto Sans, sans-serif" font-size="34" fill="#faf8f3" fill-opacity=".72">Self-hosted chat for Claude</text>
+  <text x="524" y="418" font-family="Noto Sans, sans-serif" font-size="34" fill="#faf8f3" fill-opacity=".72">Personas · images · voice · sharing</text>
+</svg>

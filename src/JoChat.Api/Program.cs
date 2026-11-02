@@ -90,11 +90,10 @@ var app = builder.Build();
 // fallback endpoint matches /assets/*, and the static file middleware steps aside.
 var spaRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 var serveSpa = File.Exists(Path.Combine(spaRoot, "index.html"));
+// No UseDefaultFiles: "/" must reach the SPA fallback below like every other client route, so
+// it gets the same absolute Open Graph URLs instead of the raw index.html.
 if (serveSpa)
-{
-    app.UseDefaultFiles();
     app.UseStaticFiles();
-}
 app.UseRouting();
 
 app.UseCors();
@@ -135,7 +134,9 @@ app.MapGet("/healthz", () => Results.Text("ok")).AllowAnonymous();
 // misconfigured URL fails visibly rather than returning a page.
 if (serveSpa)
 {
-    var indexHtml = Path.Combine(spaRoot, "index.html");
+    // Social crawlers (Discord, Slack, Facebook) ignore relative og:image URLs, and the public
+    // origin isn't known until a request arrives (forwarded headers give the tunnel's host).
+    var indexHtml = File.ReadAllText(Path.Combine(spaRoot, "index.html"));
     app.MapFallback("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", async context =>
     {
         var accept = context.Request.GetTypedHeaders().Accept;
@@ -146,8 +147,13 @@ if (serveSpa)
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             return;
         }
+        var origin = $"{context.Request.Scheme}://{context.Request.Host}";
+        var pageUrl = System.Net.WebUtility.HtmlEncode(origin + context.Request.PathBase + context.Request.Path);
+        var html = indexHtml
+            .Replace("content=\"/og-image.png\"", $"content=\"{System.Net.WebUtility.HtmlEncode(origin)}/og-image.png\"")
+            .Replace("</head>", $"  <meta property=\"og:url\" content=\"{pageUrl}\" />\n  </head>");
         context.Response.ContentType = "text/html; charset=utf-8";
-        await context.Response.SendFileAsync(indexHtml);
+        await context.Response.WriteAsync(html);
     }).AllowAnonymous();
 }
 
