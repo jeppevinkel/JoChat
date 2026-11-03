@@ -137,7 +137,7 @@ if (serveSpa)
     // Social crawlers (Discord, Slack, Facebook) ignore relative og:image URLs, and the public
     // origin isn't known until a request arrives (forwarded headers give the tunnel's host).
     var indexHtml = File.ReadAllText(Path.Combine(spaRoot, "index.html"));
-    app.MapFallback("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", async context =>
+    RequestDelegate serveIndex = async context =>
     {
         var accept = context.Request.GetTypedHeaders().Accept;
         var wantsHtml = accept.Count == 0 || accept.Any(a =>
@@ -154,7 +154,11 @@ if (serveSpa)
             .Replace("</head>", $"  <meta property=\"og:url\" content=\"{pageUrl}\" />\n  </head>");
         context.Response.ContentType = "text/html; charset=utf-8";
         await context.Response.WriteAsync(html);
-    }).AllowAnonymous();
+    };
+    // "/" needs its own route: there the catch-all below has no value, and a regex constraint
+    // rejects a missing value, so the fallback never matches the root.
+    app.Map("/", serveIndex).AllowAnonymous();
+    app.MapFallback("{*path:regex(^(?!api(/|$)|v2(/|$)|openapi(/|$)).*$)}", serveIndex).AllowAnonymous();
 }
 
 app.MapScim("/v2"); // Authentik SCIM provider points here; uses its own ScimToken scheme
